@@ -1,0 +1,1823 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>王家の谷風：無限ピラミッド</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --app-height: 100dvh;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        html, body {
+            font-family: 'DotGothic16', monospace, sans-serif;
+            background-color: #0b0e17;
+            color: #f8fafc;
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100dvh;
+            height: var(--app-height, 100dvh);
+            max-height: var(--app-height, 100dvh);
+            overflow: hidden;
+            touch-action: none;
+            overscroll-behavior: none;
+        }
+        canvas {
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            aspect-ratio: 20 / 13;
+            box-shadow: 0 0 24px rgba(234, 179, 8, 0.22);
+        }
+        .retro-btn {
+            background: linear-gradient(180deg, #334155 0%, #1e293b 100%);
+            border: 2px solid #d97706;
+            box-shadow: 0 3px 0 #0f172a;
+            transition: transform 0.05s, filter 0.08s;
+        }
+        .retro-btn:active, .retro-btn.pressed {
+            transform: translateY(2px) scale(0.97);
+            box-shadow: 0 1px 0 #0f172a;
+            filter: brightness(1.35);
+            border-color: #fde047;
+        }
+        .dpad-btn.pressed {
+            background: linear-gradient(180deg, #b45309 0%, #78350f 100%);
+            border-color: #fef08a;
+            color: #fef08a;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-between p-1.5 sm:p-2.5" style="height: var(--app-height, 100dvh);">
+
+    <!-- 固定サイズHUDバー（装備変化でもレイアウトシフト0px） -->
+    <header class="shrink-0 w-full max-w-4xl flex flex-wrap items-center justify-between gap-1.5 bg-slate-900/95 border-2 border-amber-600/80 rounded-xl px-2 py-1.5 shadow-md">
+        <div class="flex items-center gap-1.5 shrink-0">
+            <span class="text-lg sm:text-xl leading-none">🏺</span>
+            <h1 class="text-xs sm:text-base font-bold text-amber-300 tracking-wider whitespace-nowrap">王家の谷風：無限ピラミッド</h1>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs">
+            <div class="h-6 sm:h-7 min-w-[54px] bg-slate-950 border border-amber-800/80 rounded-lg px-1.5 inline-flex items-center justify-center gap-1 whitespace-nowrap">
+                <span class="text-amber-500">階層</span>
+                <span id="hudStage" class="font-bold text-amber-200">1</span>
+            </div>
+            <div class="h-6 sm:h-7 min-w-[56px] bg-slate-950 border border-amber-800/80 rounded-lg px-1.5 inline-flex items-center justify-center gap-1 whitespace-nowrap">
+                <span class="text-amber-500">残機</span>
+                <span id="hudLives" class="font-bold text-rose-400">3</span>
+            </div>
+            <div class="h-6 sm:h-7 min-w-[74px] bg-slate-950 border border-amber-800/80 rounded-lg px-1.5 inline-flex items-center justify-center gap-1 whitespace-nowrap">
+                <span class="text-amber-500">SCORE</span>
+                <span id="hudScore" class="font-bold text-emerald-300">0</span>
+            </div>
+            <div class="h-6 sm:h-7 min-w-[58px] bg-slate-950 border border-amber-800/80 rounded-lg px-1.5 inline-flex items-center justify-center gap-1 whitespace-nowrap">
+                <span class="text-cyan-400">💎</span>
+                <span id="hudGems" class="font-bold text-cyan-200">0/5</span>
+            </div>
+            <div class="h-6 sm:h-7 min-w-[114px] w-[114px] bg-slate-950 border border-amber-500/90 rounded-lg px-2 inline-flex items-center gap-1 whitespace-nowrap overflow-hidden">
+                <span class="text-amber-400 shrink-0">装備:</span>
+                <span id="hudItem" class="font-bold text-slate-400 truncate">なし</span>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-1 shrink-0">
+            <button id="btnRetry" type="button" class="retro-btn h-6 sm:h-7 px-2 rounded-lg text-[11px] font-bold text-sky-200 whitespace-nowrap" title="やり直し (R)">🔄 再挑戦</button>
+            <button id="btnNewStage" type="button" class="retro-btn h-6 sm:h-7 px-2 rounded-lg text-[11px] font-bold text-emerald-200 whitespace-nowrap" title="新迷宮 (N)">✨ 新迷宮</button>
+            <button id="btnMute" type="button" class="retro-btn h-6 sm:h-7 w-7 rounded-lg text-xs font-bold text-amber-200 inline-flex items-center justify-center" title="効果音 ON/OFF">🔊</button>
+        </div>
+    </header>
+
+    <!-- メインゲームキャンバス -->
+    <main class="relative flex-1 min-h-0 w-full max-w-4xl flex items-center justify-center my-1 overflow-hidden">
+        <canvas id="gameCanvas" class="rounded-xl border-2 sm:border-4 border-amber-700 bg-[#0b0e17] max-w-full max-h-full w-auto h-auto object-contain"></canvas>
+
+        <!-- ステージ結果オーバーレイ -->
+        <div id="overlay" class="hidden absolute inset-0 bg-slate-950/80 backdrop-blur-[2px] rounded-xl flex flex-col items-center justify-center p-4 text-center z-20">
+            <div id="overlayIcon" class="text-4xl sm:text-5xl mb-2">👑</div>
+            <h2 id="overlayTitle" class="text-xl sm:text-3xl font-bold text-amber-300 mb-1 tracking-wider">FLOOR CLEAR!</h2>
+            <p id="overlayDesc" class="text-xs sm:text-base text-slate-200 mb-4">すべての宝石を集めて王家の扉を開いた！</p>
+            <div class="flex flex-wrap justify-center gap-2.5">
+                <button id="overlayPrimary" type="button" class="retro-btn rounded-xl px-4 py-2 text-sm sm:text-base font-bold text-emerald-200 border-emerald-500">次の階層へ ▶</button>
+                <button id="overlaySecondary" type="button" class="retro-btn rounded-xl px-3.5 py-2 text-xs sm:text-sm font-bold text-amber-200">同じ迷宮を再挑戦</button>
+            </div>
+        </div>
+    </main>
+
+    <!-- フッター（PC操作ガイド＆モバイル用マルチタッチパッド） -->
+    <footer class="shrink-0 w-full max-w-4xl flex flex-col gap-1 overflow-hidden">
+        <div class="hidden lg:flex items-center justify-between bg-slate-900/90 border border-amber-900/70 rounded-xl px-3.5 py-1.5 text-xs text-slate-300">
+            <div class="flex items-center gap-4">
+                <span><strong class="text-amber-400">[←→↑↓ / WASD]</strong> 移動・ハシゴ昇降</span>
+                <span><strong class="text-emerald-400">[Space / Z]</strong> 頂点ホバー1ブロックジャンプ</span>
+                <span><strong class="text-yellow-300">[X / Enter]</strong> 使う（⛏️2段壁破壊 / 🗡️投擲）</span>
+                <span><strong class="text-sky-300">[C / Shift]</strong> 置く</span>
+            </div>
+            <span class="text-amber-500">※短剣は各階1本限定</span>
+        </div>
+
+        <!-- モバイル・タブレット用コントローラー -->
+        <div class="flex lg:hidden w-full max-w-full justify-between items-center gap-2 px-2 py-1.5 bg-slate-900/90 rounded-xl border border-amber-800/80 shadow-lg overflow-hidden">
+            <!-- 角度＆距離判定バーチャルD-Pad -->
+            <div id="dpadZone" class="relative w-[138px] h-[138px] sm:w-[156px] sm:h-[156px] shrink-0 rounded-2xl bg-slate-950/80 border-2 border-amber-900/80 p-1 flex items-center justify-center">
+                <div class="grid grid-cols-3 gap-1 w-full h-full pointer-events-none">
+                    <div></div>
+                    <div data-dpad-vis="up" class="dpad-btn retro-btn rounded-xl flex items-center justify-center text-lg text-amber-200">▲</div>
+                    <div></div>
+                    <div data-dpad-vis="left" class="dpad-btn retro-btn rounded-xl flex items-center justify-center text-lg text-amber-200">◀</div>
+                    <div class="rounded-full border border-amber-800/60 bg-slate-900 flex items-center justify-center text-[9px] text-amber-500 font-bold">PAD</div>
+                    <div data-dpad-vis="right" class="dpad-btn retro-btn rounded-xl flex items-center justify-center text-lg text-amber-200">▶</div>
+                    <div></div>
+                    <div data-dpad-vis="down" class="dpad-btn retro-btn rounded-xl flex items-center justify-center text-lg text-amber-200">▼</div>
+                    <div></div>
+                </div>
+            </div>
+
+            <!-- 右側アクションボタン群（狭い画面でもはみ出しゼロ） -->
+            <div class="flex-1 min-w-0 max-w-[230px] flex flex-col gap-1.5 justify-center">
+                <div class="grid grid-cols-2 gap-1.5 w-full">
+                    <button type="button" id="btnTouchJump" data-action="jump" class="retro-btn w-full h-[56px] sm:h-[62px] rounded-xl px-1 flex flex-col items-center justify-center text-emerald-200 font-bold border-emerald-600 overflow-hidden">
+                        <span class="text-xs sm:text-sm whitespace-nowrap">🦘 JUMP</span>
+                        <span class="text-[10px] text-emerald-400 whitespace-nowrap">ジャンプ</span>
+                    </button>
+                    <button type="button" id="btnTouchUse" data-action="use" class="retro-btn w-full h-[56px] sm:h-[62px] rounded-xl px-1 flex flex-col items-center justify-center text-yellow-200 font-bold border-amber-500 overflow-hidden">
+                        <span class="text-xs sm:text-sm whitespace-nowrap">⛏️/🗡️ USE</span>
+                        <span class="text-[10px] text-amber-300 whitespace-nowrap">使う</span>
+                    </button>
+                </div>
+                <button type="button" id="btnTouchDrop" data-action="drop" class="retro-btn w-full h-10 rounded-xl px-2 flex items-center justify-center text-xs sm:text-sm text-sky-200 font-bold border-sky-700 whitespace-nowrap overflow-hidden">
+                    📦 DROP (置く)
+                </button>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+    (() => {
+        'use strict';
+
+        // --- ビューポート実表示高さ同期（モバイルChromeアドレスバー対策） ---
+        function syncViewportHeight() {
+            const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+            document.documentElement.style.setProperty('--app-height', `${Math.floor(vh)}px`);
+        }
+        syncViewportHeight();
+        window.addEventListener('resize', syncViewportHeight);
+        window.addEventListener('orientationchange', syncViewportHeight);
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', syncViewportHeight);
+        }
+
+        // --- 定数・タイル定義 ---
+        const COLS = 20;
+        const ROWS = 13;
+        const TILE_SIZE = 24;
+        const CANVAS_W = COLS * TILE_SIZE; // 480
+        const CANVAS_H = ROWS * TILE_SIZE; // 312
+
+        const TILE = {
+            EMPTY: 0,
+            SOLID: 1,
+            BRICK: 2,
+            LADDER: 3,
+            LADDER_TOP: 4,
+            GEM: 5,
+            DOOR: 6
+        };
+
+        // 物理＆バランス定数
+        const PLAYER_SPEED = 1.45;
+        const LADDER_SPEED = 1.25;
+        const JUMP_VELOCITY = -4.35;
+        const GRAVITY = 0.34;
+        const APEX_THRESHOLD = 1.40;
+        const APEX_GRAVITY = GRAVITY * 0.30; // ~0.102
+        const MUMMY_SPEED = 0.62;
+        const MUMMY_RESPAWN_TIME = 180;
+        const MUMMY_SPAWN_INVULN = 72; // ~1.2秒点滅無敵
+
+        const FLOOR_WALK_ROWS = [2, 5, 8, 11];
+        const FLOOR_SLAB_ROWS = [3, 6, 9];
+
+        // --- Web Audio API 8-bit チップチューン効果音 ---
+        let audioCtx = null;
+        let muted = false;
+
+        function initAudio() {
+            if (!audioCtx && !muted) {
+                const AC = window.AudioContext || window.webkitAudioContext;
+                if (AC) audioCtx = new AC();
+            }
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume().catch(() => {});
+            }
+        }
+
+        function tone(freq, type, dur, vol = 0.07, slide = null) {
+            if (muted) return;
+            initAudio();
+            if (!audioCtx) return;
+            try {
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, now);
+                if (slide) osc.frequency.exponentialRampToValueAtTime(slide, now + dur);
+                gain.gain.setValueAtTime(vol, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + dur);
+            } catch (e) {}
+        }
+
+        const SFX = {
+            jump: () => tone(210, 'square', 0.13, 0.06, 440),
+            gem: () => {
+                tone(587.33, 'square', 0.07, 0.07);
+                setTimeout(() => tone(880, 'square', 0.13, 0.07), 60);
+            },
+            pickup: () => tone(440, 'triangle', 0.08, 0.07, 660),
+            drop: () => tone(330, 'triangle', 0.08, 0.06, 220),
+            dig: () => {
+                tone(155, 'sawtooth', 0.11, 0.09, 65);
+                setTimeout(() => tone(110, 'square', 0.10, 0.08, 55), 50);
+            },
+            throw: () => tone(680, 'sawtooth', 0.10, 0.06, 260),
+            clink: () => tone(980, 'square', 0.05, 0.05, 420),
+            hitEnemy: () => {
+                tone(300, 'square', 0.08, 0.08, 120);
+                setTimeout(() => tone(180, 'sawtooth', 0.16, 0.08, 60), 65);
+            },
+            clear: () => {
+                [523.25, 659.25, 783.99, 1046.50].forEach((n, i) => {
+                    setTimeout(() => tone(n, 'square', 0.15, 0.07), i * 90);
+                });
+            },
+            miss: () => {
+                [330, 293.66, 246.94, 185].forEach((n, i) => {
+                    setTimeout(() => tone(n, 'sawtooth', 0.16, 0.07), i * 100);
+                });
+            }
+        };
+
+        // --- キャンバス＆ゲーム状態 ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = CANVAS_W;
+        canvas.height = CANVAS_H;
+
+        const state = {
+            stage: 1,
+            lives: 3,
+            score: 0,
+            status: 'playing', // 'playing' | 'clear' | 'miss' | 'gameover'
+            grid: [],
+            snapshot: null,
+            totalGems: 0,
+            collectedGems: 0,
+            doorPos: { gx: 17, gy: 2 },
+            player: {
+                x: 2 * TILE_SIZE,
+                y: 2 * TILE_SIZE,
+                vy: 0,
+                dir: 1,
+                grounded: true,
+                onLadder: false,
+                heldItem: null, // null | 'pickaxe' | 'dagger'
+                walkFrame: 0,
+                cooldown: 0
+            },
+            items: [],     // { id, type, x, y, vx, vy, state: 'ground'|'flying'|'falling', dir, angle, ignoreUntilClear }
+            enemies: [],   // { x, y, spawnX, spawnY, vy, dir, onLadder, ladderDir, ladderCd, respawnTimer, spawnInvuln, animFrame }
+            particles: [],
+            frame: 0
+        };
+
+        // --- タイル判定ヘルパー ---
+        function getTile(gx, gy) {
+            if (gx < 0 || gx >= COLS || gy < 0 || gy >= ROWS) return TILE.SOLID;
+            return state.grid[gy][gx];
+        }
+
+        function isSolid(t) {
+            return t === TILE.SOLID || t === TILE.BRICK;
+        }
+
+        function isFloorSupport(t) {
+            return t === TILE.SOLID || t === TILE.BRICK || t === TILE.LADDER_TOP;
+        }
+
+        function isLadder(t) {
+            return t === TILE.LADDER || t === TILE.LADDER_TOP;
+        }
+
+        // ハシゴ列の連続する最上段行(topRow)を取得
+        function getLadderTopRow(gx, startGy) {
+            let r = Math.max(0, Math.min(ROWS - 1, startGy));
+            if (!isLadder(getTile(gx, r))) {
+                if (r + 1 < ROWS && isLadder(getTile(gx, r + 1))) r++;
+                else if (r - 1 >= 0 && isLadder(getTile(gx, r - 1))) r--;
+                else return r;
+            }
+            while (r > 0 && isLadder(getTile(gx, r - 1))) r--;
+            return r;
+        }
+
+        // ハシゴ列の連続する最下段行(bottomRow)を取得
+        function getLadderBottomRow(gx, startGy) {
+            let r = Math.max(0, Math.min(ROWS - 1, startGy));
+            if (!isLadder(getTile(gx, r))) {
+                if (r - 1 >= 0 && isLadder(getTile(gx, r - 1))) r--;
+                else if (r + 1 < ROWS && isLadder(getTile(gx, r + 1))) r++;
+                else return r;
+            }
+            while (r + 1 < ROWS && isLadder(getTile(gx, r + 1))) r++;
+            return r;
+        }
+
+        // --- プロシージャル迷宮生成＆100%クリア保証BFSソルバー ---
+        function createBaseGrid() {
+            const g = Array.from({ length: ROWS }, () => Array(COLS).fill(TILE.EMPTY));
+            for (let x = 0; x < COLS; x++) {
+                g[0][x] = TILE.SOLID;
+                g[ROWS - 1][x] = TILE.SOLID;
+            }
+            for (let y = 0; y < ROWS; y++) {
+                g[y][0] = TILE.SOLID;
+                g[y][COLS - 1] = TILE.SOLID;
+            }
+            for (const slabY of FLOOR_SLAB_ROWS) {
+                for (let x = 1; x < COLS - 1; x++) {
+                    g[slabY][x] = TILE.SOLID;
+                }
+            }
+            return g;
+        }
+
+        // BFS到達可能性検証ソルバー（全宝石・必要ツルハシ・出口扉が100%到達可能か厳密チェック）
+        function verifySolvable(grid, startGx, startGy, items, doorPos) {
+            const gemList = [];
+            const gemIndexMap = new Map();
+            for (let y = 1; y < ROWS - 1; y++) {
+                for (let x = 1; x < COLS - 1; x++) {
+                    if (grid[y][x] === TILE.GEM) {
+                        gemIndexMap.set(`${x},${y}`, gemList.length);
+                        gemList.push({ x, y });
+                    }
+                }
+            }
+            if (gemList.length === 0) return false;
+            const targetGemMask = (1 << gemList.length) - 1;
+
+            const pickaxeIndexMap = new Map();
+            let pickaxeCounter = 0;
+            for (const it of items) {
+                if (it.type === 'pickaxe') {
+                    const gx = Math.round(it.x / TILE_SIZE);
+                    const gy = Math.round(it.y / TILE_SIZE);
+                    pickaxeIndexMap.set(`${gx},${gy}`, pickaxeCounter++);
+                }
+            }
+
+            // 縦2ブロック積みのBRICK壁をペアIDで管理
+            const brickPairMap = new Map();
+            let brickPairCounter = 0;
+            for (let x = 1; x < COLS - 1; x++) {
+                for (const walkY of FLOOR_WALK_ROWS) {
+                    if (grid[walkY][x] === TILE.BRICK && grid[walkY - 1][x] === TILE.BRICK) {
+                        const id = brickPairCounter++;
+                        brickPairMap.set(`${x},${walkY}`, id);
+                        brickPairMap.set(`${x},${walkY - 1}`, id);
+                    }
+                }
+            }
+
+            function canEnter(x, y, brokenMask) {
+                if (x <= 0 || x >= COLS - 1 || y <= 0 || y >= ROWS - 1) return false;
+                const t = grid[y][x];
+                if (t === TILE.SOLID) return false;
+                if (t === TILE.BRICK) {
+                    const bId = brickPairMap.get(`${x},${y}`);
+                    return bId !== undefined && ((brokenMask >> bId) & 1) === 1;
+                }
+                return true;
+            }
+
+            function hasSupport(x, y, brokenMask) {
+                if (y + 1 >= ROWS) return true;
+                const below = grid[y + 1][x];
+                if (below === TILE.SOLID || below === TILE.LADDER_TOP) return true;
+                if (below === TILE.BRICK) {
+                    const bId = brickPairMap.get(`${x},${y + 1}`);
+                    return !(bId !== undefined && ((brokenMask >> bId) & 1) === 1);
+                }
+                return false;
+            }
+
+            const startKey = `${startGx},${startGy},0,0,0,0`;
+            const visited = new Set([startKey]);
+            const queue = [{
+                gx: startGx,
+                gy: startGy,
+                gemMask: 0,
+                hasPickaxe: 0,
+                pickedMask: 0,
+                brokenMask: 0
+            }];
+
+            let steps = 0;
+            while (queue.length > 0 && steps < 60000) {
+                steps++;
+                const cur = queue.shift();
+                let { gx, gy, gemMask, hasPickaxe, pickedMask, brokenMask } = cur;
+
+                // 現在マスの宝石回収
+                const gIdx = gemIndexMap.get(`${gx},${gy}`);
+                if (gIdx !== undefined) {
+                    gemMask |= (1 << gIdx);
+                }
+
+                // 現在マスのツルハシ取得（未所持のときのみ）
+                if (hasPickaxe === 0) {
+                    const pIdx = pickaxeIndexMap.get(`${gx},${gy}`);
+                    if (pIdx !== undefined && ((pickedMask >> pIdx) & 1) === 0) {
+                        pickedMask |= (1 << pIdx);
+                        hasPickaxe = 1;
+                    }
+                }
+
+                // クリア条件判定
+                if (gemMask === targetGemMask && gx === doorPos.gx && gy === doorPos.gy) {
+                    return true;
+                }
+
+                const onLad = isLadder(grid[gy][gx]);
+                const grounded = hasSupport(gx, gy, brokenMask);
+
+                // 空中落下（ハシゴ上でも床支持もない場合）
+                if (!onLad && !grounded) {
+                    if (canEnter(gx, gy + 1, brokenMask)) {
+                        const key = `${gx},${gy + 1},${gemMask},${hasPickaxe},${pickedMask},${brokenMask}`;
+                        if (!visited.has(key)) {
+                            visited.add(key);
+                            queue.push({ gx, gy: gy + 1, gemMask, hasPickaxe, pickedMask, brokenMask });
+                        }
+                    }
+                    continue;
+                }
+
+                // 左右歩行＆隣接BRICK壁のツルハシ掘削
+                for (const dx of [-1, 1]) {
+                    const nx = gx + dx;
+                    if (nx <= 0 || nx >= COLS - 1) continue;
+                    if (canEnter(nx, gy, brokenMask)) {
+                        const key = `${nx},${gy},${gemMask},${hasPickaxe},${pickedMask},${brokenMask}`;
+                        if (!visited.has(key)) {
+                            visited.add(key);
+                            queue.push({ gx: nx, gy, gemMask, hasPickaxe, pickedMask, brokenMask });
+                        }
+                    } else if (hasPickaxe === 1 && grid[gy][nx] === TILE.BRICK) {
+                        const bId = brickPairMap.get(`${nx},${gy}`);
+                        if (bId !== undefined && ((brokenMask >> bId) & 1) === 0) {
+                            const nextBroken = brokenMask | (1 << bId);
+                            const key = `${nx},${gy},${gemMask},0,${pickedMask},${nextBroken}`;
+                            if (!visited.has(key)) {
+                                visited.add(key);
+                                queue.push({
+                                    gx: nx,
+                                    gy,
+                                    gemMask,
+                                    hasPickaxe: 0,
+                                    pickedMask,
+                                    brokenMask: nextBroken
+                                });
+                            }
+                        }
+                    }
+                }
+
+                // ハシゴ上昇
+                if (onLad && canEnter(gx, gy - 1, brokenMask)) {
+                    const key = `${gx},${gy - 1},${gemMask},${hasPickaxe},${pickedMask},${brokenMask}`;
+                    if (!visited.has(key)) {
+                        visited.add(key);
+                        queue.push({ gx, gy: gy - 1, gemMask, hasPickaxe, pickedMask, brokenMask });
+                    }
+                }
+
+                // ハシゴ下降（空中終端ハシゴからの飛び降りも含む）
+                const belowT = gy + 1 < ROWS ? grid[gy + 1][gx] : TILE.SOLID;
+                if ((onLad || belowT === TILE.LADDER_TOP) && canEnter(gx, gy + 1, brokenMask)) {
+                    const key = `${gx},${gy + 1},${gemMask},${hasPickaxe},${pickedMask},${brokenMask}`;
+                    if (!visited.has(key)) {
+                        visited.add(key);
+                        queue.push({ gx, gy: gy + 1, gemMask, hasPickaxe, pickedMask, brokenMask });
+                    }
+                }
+            }
+            return false;
+        }
+
+        function generateStage(stageNum) {
+            for (let attempt = 0; attempt < 80; attempt++) {
+                const grid = createBaseGrid();
+                const startGx = 2;
+                const startGy = FLOOR_WALK_ROWS[0]; // y=2
+                const doorFloor = stageNum % 2 === 1 ? 0 : 3;
+                const doorPos = { gx: COLS - 3, gy: FLOOR_WALK_ROWS[doorFloor] };
+
+                // 各階層をつなぐハシゴ生成（一部は下端が空中で終わる吊りハシゴも生成）
+                for (let f = 0; f < 3; f++) {
+                    const slabY = FLOOR_SLAB_ROWS[f];
+                    const lowerWalkY = FLOOR_WALK_ROWS[f + 1];
+                    const ladCount = f === 1 ? 3 : 2;
+                    const colsUsed = [];
+
+                    for (let c = 0; c < ladCount; c++) {
+                        for (let tries = 0; tries < 40; tries++) {
+                            const lx = 2 + Math.floor(Math.random() * (COLS - 4));
+                            if (f === 0 && lx === startGx) continue;
+                            if ((f === doorFloor || f + 1 === doorFloor) && lx === doorPos.gx) continue;
+                            if (colsUsed.some(u => Math.abs(u - lx) < 3)) continue;
+
+                            colsUsed.push(lx);
+                            grid[slabY][lx] = TILE.LADDER_TOP;
+                            // 25%の確率で最下段1マス手前で途切れる吊りハシゴにする
+                            const hanging = (f < 2 && c === ladCount - 1 && Math.random() < 0.35);
+                            const endY = hanging ? lowerWalkY - 1 : lowerWalkY;
+                            for (let ly = slabY + 1; ly <= endY; ly++) {
+                                grid[ly][lx] = TILE.LADDER;
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                // 縦2ブロック積みの壊せるレンガ壁（BRICK）を配置
+                const targetBricks = Math.min(3, 1 + Math.floor((stageNum + 1) / 3));
+                const placedBricks = [];
+                for (let b = 0; b < targetBricks; b++) {
+                    for (let tries = 0; tries < 35; tries++) {
+                        const f = Math.floor(Math.random() * 4);
+                        const walkY = FLOOR_WALK_ROWS[f];
+                        const bx = 3 + Math.floor(Math.random() * (COLS - 6));
+                        if (f === 0 && Math.abs(bx - startGx) <= 2) continue;
+                        if (f === doorFloor && Math.abs(bx - doorPos.gx) <= 1) continue;
+                        if (grid[walkY][bx] !== TILE.EMPTY || grid[walkY - 1][bx] !== TILE.EMPTY) continue;
+                        if (grid[walkY + 1][bx] !== TILE.SOLID) continue;
+                        if (placedBricks.some(pb => pb.f === f && Math.abs(pb.bx - bx) < 3)) continue;
+
+                        grid[walkY][bx] = TILE.BRICK;
+                        grid[walkY - 1][bx] = TILE.BRICK;
+                        placedBricks.push({ f, bx, walkY });
+                        break;
+                    }
+                }
+
+                // 出口扉
+                grid[doorPos.gy][doorPos.gx] = TILE.DOOR;
+
+                const occupied = new Set([`${startGx},${startGy}`, `${doorPos.gx},${doorPos.gy}`]);
+
+                // 宝石（GEMタイル）配置
+                const gemCount = Math.min(7, 5 + Math.floor(stageNum / 4));
+                let placedGems = 0;
+                for (let g = 0; g < gemCount; g++) {
+                    for (let tries = 0; tries < 40; tries++) {
+                        const f = g < 4 ? g : Math.floor(Math.random() * 4);
+                        const walkY = FLOOR_WALK_ROWS[f];
+                        const gx = 2 + Math.floor(Math.random() * (COLS - 4));
+                        const key = `${gx},${walkY}`;
+                        if (occupied.has(key)) continue;
+                        if (grid[walkY][gx] !== TILE.EMPTY) continue;
+                        if (!isFloorSupport(grid[walkY + 1][gx])) continue;
+
+                        occupied.add(key);
+                        grid[walkY][gx] = TILE.GEM;
+                        placedGems++;
+                        break;
+                    }
+                }
+
+                // アイテム配置（BRICK壁の数と同数のツルハシ + 短剣はステージに1本限定）
+                const items = [];
+                let itemId = 1;
+                const pickaxeCount = placedBricks.length;
+                for (let pk = 0; pk < pickaxeCount; pk++) {
+                    for (let tries = 0; tries < 45; tries++) {
+                        const f = pk === 0 ? 0 : Math.floor(Math.random() * 4);
+                        const walkY = FLOOR_WALK_ROWS[f];
+                        const ix = 2 + Math.floor(Math.random() * (COLS - 4));
+                        const key = `${ix},${walkY}`;
+                        if (occupied.has(key)) continue;
+                        if (grid[walkY][ix] !== TILE.EMPTY) continue;
+                        if (!isFloorSupport(grid[walkY + 1][ix])) continue;
+
+                        occupied.add(key);
+                        items.push({
+                            id: itemId++,
+                            type: 'pickaxe',
+                            x: ix * TILE_SIZE,
+                            y: walkY * TILE_SIZE,
+                            vx: 0,
+                            vy: 0,
+                            state: 'ground',
+                            dir: 1,
+                            angle: 0,
+                            ignoreUntilClear: false
+                        });
+                        break;
+                    }
+                }
+
+                // 短剣（各ステージ厳密に1本のみ）
+                for (let tries = 0; tries < 45; tries++) {
+                    const f = 1 + Math.floor(Math.random() * 3);
+                    const walkY = FLOOR_WALK_ROWS[f];
+                    const ix = 2 + Math.floor(Math.random() * (COLS - 4));
+                    const key = `${ix},${walkY}`;
+                    if (occupied.has(key)) continue;
+                    if (grid[walkY][ix] !== TILE.EMPTY) continue;
+                    if (!isFloorSupport(grid[walkY + 1][ix])) continue;
+
+                    occupied.add(key);
+                    items.push({
+                        id: itemId++,
+                        type: 'dagger',
+                        x: ix * TILE_SIZE,
+                        y: walkY * TILE_SIZE,
+                        vx: 0,
+                        vy: 0,
+                        state: 'ground',
+                        dir: 1,
+                        angle: 0,
+                        ignoreUntilClear: false
+                    });
+                    break;
+                }
+
+                if (placedGems >= 4 && verifySolvable(grid, startGx, startGy, items, doorPos)) {
+                    // ミイラ配置（5階層ごとに+1体、最大6体）
+                    const mummyCount = Math.min(6, 2 + Math.floor(stageNum / 5));
+                    const enemies = [];
+                    for (let m = 0; m < mummyCount; m++) {
+                        for (let tries = 0; tries < 50; tries++) {
+                            const f = 1 + (m % 3);
+                            const walkY = FLOOR_WALK_ROWS[f];
+                            const mx = 4 + Math.floor(Math.random() * (COLS - 6));
+                            if (grid[walkY][mx] !== TILE.EMPTY) continue;
+                            if (!isFloorSupport(grid[walkY + 1][mx])) continue;
+                            if (enemies.some(en => en.spawnY === walkY * TILE_SIZE && Math.abs(en.spawnX - mx * TILE_SIZE) < TILE_SIZE * 2)) continue;
+
+                            enemies.push({
+                                x: mx * TILE_SIZE,
+                                y: walkY * TILE_SIZE,
+                                spawnX: mx * TILE_SIZE,
+                                spawnY: walkY * TILE_SIZE,
+                                vy: 0,
+                                dir: m % 2 === 0 ? -1 : 1,
+                                onLadder: false,
+                                ladderDir: 0,
+                                ladderCd: 0,
+                                respawnTimer: 0,
+                                spawnInvuln: 0,
+                                animFrame: m * 1.7
+                            });
+                            break;
+                        }
+                    }
+
+                    return {
+                        grid,
+                        startGx,
+                        startGy,
+                        doorPos,
+                        totalGems: placedGems,
+                        items,
+                        enemies
+                    };
+                }
+            }
+
+            // フォールバック安全ステージ
+            const grid = createBaseGrid();
+            const startGx = 2, startGy = 2;
+            const doorPos = { gx: 17, gy: 2 };
+            grid[2][17] = TILE.DOOR;
+            [4, 15].forEach(lx => {
+                grid[3][lx] = TILE.LADDER_TOP; grid[4][lx] = TILE.LADDER; grid[5][lx] = TILE.LADDER;
+                grid[6][lx] = TILE.LADDER_TOP; grid[7][lx] = TILE.LADDER; grid[8][lx] = TILE.LADDER;
+                grid[9][lx] = TILE.LADDER_TOP; grid[10][lx] = TILE.LADDER; grid[11][lx] = TILE.LADDER;
+            });
+            grid[5][9] = TILE.BRICK;
+            grid[4][9] = TILE.BRICK;
+            grid[2][7] = TILE.GEM;
+            grid[5][11] = TILE.GEM;
+            grid[8][6] = TILE.GEM;
+            grid[11][13] = TILE.GEM;
+            grid[2][10] = TILE.GEM;
+
+            const items = [
+                { id: 1, type: 'pickaxe', x: 6 * TILE_SIZE, y: 5 * TILE_SIZE, vx: 0, vy: 0, state: 'ground', dir: 1, angle: 0, ignoreUntilClear: false },
+                { id: 2, type: 'dagger', x: 8 * TILE_SIZE, y: 8 * TILE_SIZE, vx: 0, vy: 0, state: 'ground', dir: 1, angle: 0, ignoreUntilClear: false }
+            ];
+            const mummyCount = Math.min(6, 2 + Math.floor(stageNum / 5));
+            const enemies = Array.from({ length: mummyCount }, (_, m) => {
+                const walkY = FLOOR_WALK_ROWS[1 + (m % 3)];
+                const mx = 6 + ((m * 3) % 10);
+                return {
+                    x: mx * TILE_SIZE,
+                    y: walkY * TILE_SIZE,
+                    spawnX: mx * TILE_SIZE,
+                    spawnY: walkY * TILE_SIZE,
+                    vy: 0,
+                    dir: m % 2 === 0 ? -1 : 1,
+                    onLadder: false,
+                    ladderDir: 0,
+                    ladderCd: 0,
+                    respawnTimer: 0,
+                    spawnInvuln: 0,
+                    animFrame: m * 1.7
+                };
+            });
+            return { grid, startGx, startGy, doorPos, totalGems: 5, items, enemies };
+        }
+
+        function loadSnapshot(snap) {
+            state.grid = snap.grid.map(r => [...r]);
+            state.doorPos = { ...snap.doorPos };
+            state.totalGems = snap.totalGems;
+            state.collectedGems = 0;
+            state.items = snap.items.map(it => ({
+                ...it,
+                vx: 0,
+                vy: 0,
+                state: 'ground',
+                angle: 0,
+                ignoreUntilClear: false
+            }));
+            state.enemies = snap.enemies.map(e => ({
+                ...e,
+                x: e.spawnX,
+                y: e.spawnY,
+                vy: 0,
+                onLadder: false,
+                ladderDir: 0,
+                ladderCd: 0,
+                respawnTimer: 0,
+                spawnInvuln: 0
+            }));
+            state.player = {
+                x: snap.startGx * TILE_SIZE,
+                y: snap.startGy * TILE_SIZE,
+                vy: 0,
+                dir: 1,
+                grounded: true,
+                onLadder: false,
+                heldItem: null,
+                walkFrame: 0,
+                cooldown: 0
+            };
+            state.particles = [];
+            state.status = 'playing';
+            document.getElementById('overlay').classList.add('hidden');
+            updateHUD();
+        }
+
+        function startStage(stageNum, regen = true) {
+            state.stage = stageNum;
+            if (regen || !state.snapshot) {
+                state.snapshot = generateStage(stageNum);
+            }
+            loadSnapshot(state.snapshot);
+        }
+
+        // --- HUD & オーバーレイ制御 ---
+        function updateHUD() {
+            document.getElementById('hudStage').textContent = state.stage;
+            document.getElementById('hudLives').textContent = state.lives;
+            document.getElementById('hudScore').textContent = state.score;
+            document.getElementById('hudGems').textContent = `${state.collectedGems}/${state.totalGems}`;
+
+            const itemEl = document.getElementById('hudItem');
+            if (state.player.heldItem === 'pickaxe') {
+                itemEl.textContent = '⛏️ ツルハシ';
+                itemEl.className = 'font-bold text-amber-300 truncate';
+            } else if (state.player.heldItem === 'dagger') {
+                itemEl.textContent = '🗡️ 短剣';
+                itemEl.className = 'font-bold text-cyan-300 truncate';
+            } else {
+                itemEl.textContent = 'なし';
+                itemEl.className = 'font-bold text-slate-400 truncate';
+            }
+        }
+
+        function showOverlay(mode) {
+            const ov = document.getElementById('overlay');
+            const icon = document.getElementById('overlayIcon');
+            const title = document.getElementById('overlayTitle');
+            const desc = document.getElementById('overlayDesc');
+            const pBtn = document.getElementById('overlayPrimary');
+            const sBtn = document.getElementById('overlaySecondary');
+
+            ov.classList.remove('hidden');
+            if (mode === 'clear') {
+                icon.textContent = '👑';
+                title.textContent = `FLOOR ${state.stage} CLEAR!`;
+                title.className = 'text-xl sm:text-3xl font-bold text-amber-300 mb-1 tracking-wider';
+                desc.textContent = 'すべての秘宝を集め、王家の扉を開いた！';
+                pBtn.textContent = '次の階層へ進む ▶';
+                sBtn.textContent = '同じ迷宮を再挑戦';
+                sBtn.classList.remove('hidden');
+            } else if (mode === 'miss') {
+                icon.textContent = '💀';
+                title.textContent = 'CAUGHT BY MUMMY!';
+                title.className = 'text-xl sm:text-3xl font-bold text-rose-400 mb-1 tracking-wider';
+                desc.textContent = `守護ミイラに捕まった…（残り残機: ${state.lives}）`;
+                pBtn.textContent = 'この階層を再挑戦 🔄';
+                sBtn.textContent = '新しい迷宮を生成 ✨';
+                sBtn.classList.remove('hidden');
+            } else {
+                icon.textContent = '⚱️';
+                title.textContent = 'GAME OVER';
+                title.className = 'text-xl sm:text-3xl font-bold text-rose-500 mb-1 tracking-wider';
+                desc.textContent = `最終到達: ${state.stage}階 / SCORE: ${state.score}`;
+                pBtn.textContent = '1階からやり直す 🔄';
+                sBtn.classList.add('hidden');
+            }
+        }
+
+        document.getElementById('overlayPrimary').addEventListener('click', () => {
+            initAudio();
+            if (state.status === 'clear') startStage(state.stage + 1, true);
+            else if (state.status === 'miss') loadSnapshot(state.snapshot);
+            else {
+                state.lives = 3;
+                state.score = 0;
+                startStage(1, true);
+            }
+        });
+
+        document.getElementById('overlaySecondary').addEventListener('click', () => {
+            initAudio();
+            if (state.status === 'clear') loadSnapshot(state.snapshot);
+            else if (state.status === 'miss') startStage(state.stage, true);
+        });
+
+        document.getElementById('btnRetry').addEventListener('click', () => {
+            initAudio();
+            if (state.snapshot) loadSnapshot(state.snapshot);
+        });
+
+        document.getElementById('btnNewStage').addEventListener('click', () => {
+            initAudio();
+            startStage(state.stage, true);
+        });
+
+        document.getElementById('btnMute').addEventListener('click', (e) => {
+            muted = !muted;
+            e.currentTarget.textContent = muted ? '🔇' : '🔊';
+            if (!muted) initAudio();
+        });
+
+        // --- 入力システム（キーボード + ワイド角度判定バーチャルD-Pad＆マルチタッチ） ---
+        const input = {
+            left: false,
+            right: false,
+            up: false,
+            down: false,
+            jumpPressed: false,
+            usePressed: false,
+            dropPressed: false
+        };
+
+        const keysHeld = new Set();
+        const JUMP_CODES = ['Space', 'KeyZ'];
+        const USE_CODES = ['KeyX', 'Enter'];
+        const DROP_CODES = ['KeyC', 'ShiftLeft', 'ShiftRight'];
+
+        window.addEventListener('keydown', (e) => {
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+                e.preventDefault();
+            }
+            initAudio();
+            if (!keysHeld.has(e.code)) {
+                keysHeld.add(e.code);
+                if (JUMP_CODES.includes(e.code)) input.jumpPressed = true;
+                if (USE_CODES.includes(e.code)) input.usePressed = true;
+                if (DROP_CODES.includes(e.code)) input.dropPressed = true;
+                if (e.code === 'KeyR' && state.snapshot) loadSnapshot(state.snapshot);
+                if (e.code === 'KeyN') startStage(state.stage, true);
+            }
+            syncInputs();
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keysHeld.delete(e.code);
+            syncInputs();
+        });
+
+        let dpadTouchId = null;
+        let dpadDir = { left: false, right: false, up: false, down: false };
+        const activeBtnTouches = new Map(); // touchId -> 'jump'|'use'|'drop'
+
+        const dpadZone = document.getElementById('dpadZone');
+        const visPad = {
+            up: dpadZone.querySelector('[data-dpad-vis="up"]'),
+            down: dpadZone.querySelector('[data-dpad-vis="down"]'),
+            left: dpadZone.querySelector('[data-dpad-vis="left"]'),
+            right: dpadZone.querySelector('[data-dpad-vis="right"]')
+        };
+        const touchBtns = {
+            jump: document.getElementById('btnTouchJump'),
+            use: document.getElementById('btnTouchUse'),
+            drop: document.getElementById('btnTouchDrop')
+        };
+
+        function updateDpadFromPoint(cx, cy) {
+            const rect = dpadZone.getBoundingClientRect();
+            const midX = rect.left + rect.width / 2;
+            const midY = rect.top + rect.height / 2;
+            const dx = cx - midX;
+            const dy = cy - midY;
+            if (Math.hypot(dx, dy) < 9) {
+                dpadDir = { left: false, right: false, up: false, down: false };
+                return;
+            }
+            if (Math.abs(dx) >= Math.abs(dy)) {
+                dpadDir = { left: dx < 0, right: dx > 0, up: false, down: false };
+            } else {
+                dpadDir = { left: false, right: false, up: dy < 0, down: dy > 0 };
+            }
+        }
+
+        function refreshTouchUI() {
+            visPad.up.classList.toggle('pressed', dpadDir.up);
+            visPad.down.classList.toggle('pressed', dpadDir.down);
+            visPad.left.classList.toggle('pressed', dpadDir.left);
+            visPad.right.classList.toggle('pressed', dpadDir.right);
+
+            const heldTypes = new Set(activeBtnTouches.values());
+            touchBtns.jump.classList.toggle('pressed', heldTypes.has('jump'));
+            touchBtns.use.classList.toggle('pressed', heldTypes.has('use'));
+            touchBtns.drop.classList.toggle('pressed', heldTypes.has('drop'));
+        }
+
+        function syncInputs() {
+            input.left = keysHeld.has('ArrowLeft') || keysHeld.has('KeyA') || dpadDir.left;
+            input.right = keysHeld.has('ArrowRight') || keysHeld.has('KeyD') || dpadDir.right;
+            input.up = keysHeld.has('ArrowUp') || keysHeld.has('KeyW') || dpadDir.up;
+            input.down = keysHeld.has('ArrowDown') || keysHeld.has('KeyS') || dpadDir.down;
+        }
+
+        window.addEventListener('blur', () => {
+            keysHeld.clear();
+            dpadTouchId = null;
+            dpadDir = { left: false, right: false, up: false, down: false };
+            activeBtnTouches.clear();
+            refreshTouchUI();
+            syncInputs();
+        });
+
+        ['contextmenu', 'selectstart', 'gesturestart'].forEach(ev => {
+            document.addEventListener(ev, e => e.preventDefault(), { passive: false });
+        });
+
+        document.addEventListener('touchstart', (e) => {
+            if (e.target.closest('header') || e.target.closest('#overlay')) return;
+            e.preventDefault();
+            initAudio();
+
+            const rect = dpadZone.getBoundingClientRect();
+            const margin = 22;
+
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                const actEl = t.target.closest('[data-action]');
+                if (actEl) {
+                    const act = actEl.getAttribute('data-action');
+                    activeBtnTouches.set(t.identifier, act);
+                    if (act === 'jump') input.jumpPressed = true;
+                    if (act === 'use') input.usePressed = true;
+                    if (act === 'drop') input.dropPressed = true;
+                } else if (
+                    t.target.closest('#dpadZone') ||
+                    (t.clientX >= rect.left - margin && t.clientX <= rect.right + margin &&
+                     t.clientY >= rect.top - margin && t.clientY <= rect.bottom + margin)
+                ) {
+                    dpadTouchId = t.identifier;
+                    updateDpadFromPoint(t.clientX, t.clientY);
+                }
+            }
+            refreshTouchUI();
+            syncInputs();
+        }, { passive: false });
+
+        document.addEventListener('touchmove', (e) => {
+            if (e.target.closest('header') || e.target.closest('#overlay')) return;
+            e.preventDefault();
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                if (t.identifier === dpadTouchId) {
+                    updateDpadFromPoint(t.clientX, t.clientY);
+                }
+            }
+            refreshTouchUI();
+            syncInputs();
+        }, { passive: false });
+
+        function endTouches(e) {
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                const t = e.changedTouches[i];
+                if (t.identifier === dpadTouchId) {
+                    dpadTouchId = null;
+                    dpadDir = { left: false, right: false, up: false, down: false };
+                }
+                activeBtnTouches.delete(t.identifier);
+            }
+            refreshTouchUI();
+            syncInputs();
+        }
+        document.addEventListener('touchend', endTouches, { passive: false });
+        document.addEventListener('touchcancel', endTouches, { passive: false });
+
+        Object.entries(touchBtns).forEach(([act, el]) => {
+            el.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                initAudio();
+                if (act === 'jump') input.jumpPressed = true;
+                if (act === 'use') input.usePressed = true;
+                if (act === 'drop') input.dropPressed = true;
+            });
+        });
+
+        // --- パーティクル ---
+        function emitParticles(x, y, color, count = 10) {
+            for (let i = 0; i < count; i++) {
+                const a = Math.random() * Math.PI * 2;
+                const s = 0.6 + Math.random() * 2.1;
+                state.particles.push({
+                    x,
+                    y,
+                    vx: Math.cos(a) * s,
+                    vy: Math.sin(a) * s - 0.7,
+                    life: 16 + Math.floor(Math.random() * 12),
+                    maxLife: 28,
+                    color,
+                    size: 2 + Math.floor(Math.random() * 2)
+                });
+            }
+        }
+
+        // --- プレイヤー更新 ---
+        function updatePlayer() {
+            const p = state.player;
+            if (p.cooldown > 0) p.cooldown--;
+
+            const cx = p.x + TILE_SIZE / 2;
+            const cy = p.y + TILE_SIZE / 2;
+            const col = Math.floor(cx / TILE_SIZE);
+            const row = Math.floor(cy / TILE_SIZE);
+            const curTile = getTile(col, row);
+
+            if (input.left && !input.right) p.dir = -1;
+            if (input.right && !input.left) p.dir = 1;
+
+            if (p.onLadder) {
+                p.vy = 0;
+                p.grounded = false;
+
+                // ハシゴ中心へX座標を緩やかに揃える
+                const snapX = col * TILE_SIZE;
+                if (Math.abs(p.x - snapX) <= 3) p.x = snapX;
+                else p.x += Math.sign(snapX - p.x) * 1.4;
+
+                const topRow = getLadderTopRow(col, row);
+                const bottomRow = getLadderBottomRow(col, row);
+                const minY = (topRow - 1) * TILE_SIZE;
+                const maxLadderY = bottomRow * TILE_SIZE;
+
+                if (input.up) {
+                    p.y -= LADDER_SPEED;
+                    p.walkFrame += 0.16;
+                    if (p.y <= minY) {
+                        // ハシゴ最上段の床面でピタッと着地・ハシゴ解除
+                        p.y = minY;
+                        p.onLadder = false;
+                        p.grounded = true;
+                    }
+                } else if (input.down) {
+                    const nextFootY = p.y + TILE_SIZE + LADDER_SPEED;
+                    const belowRow = Math.floor(nextFootY / TILE_SIZE);
+                    if (isSolid(getTile(col, belowRow))) {
+                        // 下の床へピタッと着地（めり込み防止）
+                        p.y = belowRow * TILE_SIZE - TILE_SIZE;
+                        p.onLadder = false;
+                        p.grounded = true;
+                    } else {
+                        p.y += LADDER_SPEED;
+                        p.walkFrame += 0.16;
+                        if (p.y >= maxLadderY) {
+                            const underRow = bottomRow + 1;
+                            if (underRow >= ROWS || isSolid(getTile(col, underRow))) {
+                                p.y = maxLadderY;
+                                p.onLadder = false;
+                                p.grounded = true;
+                            } else {
+                                // 空中終端ハシゴ：即座に手を離して重力落下へ移行
+                                p.onLadder = false;
+                                p.grounded = false;
+                                p.vy = 0.5;
+                            }
+                        }
+                    }
+                }
+
+                // ハシゴ途中からの左右離脱
+                if (input.left || input.right) {
+                    const mDir = input.left ? -1 : 1;
+                    const snapFootRow = Math.floor((p.y + TILE_SIZE + 2) / TILE_SIZE);
+                    if (isSolid(getTile(col, snapFootRow))) {
+                        const floorTop = snapFootRow * TILE_SIZE - TILE_SIZE;
+                        if (p.y >= floorTop - 3) {
+                            p.y = floorTop;
+                            p.grounded = true;
+                        }
+                    }
+
+                    const nextX = p.x + mDir * PLAYER_SPEED;
+                    const edgeCol = Math.floor((nextX + (mDir > 0 ? TILE_SIZE - 4 : 3)) / TILE_SIZE);
+                    const topBody = Math.floor((p.y + 3) / TILE_SIZE);
+                    const botBody = Math.floor((p.y + TILE_SIZE - 5) / TILE_SIZE);
+                    if (!isSolid(getTile(edgeCol, topBody)) && !isSolid(getTile(edgeCol, botBody))) {
+                        p.x = nextX;
+                        p.onLadder = false;
+                    }
+                }
+
+                if (input.jumpPressed) {
+                    p.onLadder = false;
+                    p.vy = JUMP_VELOCITY;
+                    SFX.jump();
+                }
+            } else {
+                // 地上・空中移動
+                let moveX = 0;
+                if (input.left) moveX -= PLAYER_SPEED;
+                if (input.right) moveX += PLAYER_SPEED;
+
+                if (moveX !== 0) {
+                    const nextX = p.x + moveX;
+                    const edgeX = moveX > 0 ? nextX + TILE_SIZE - 4 : nextX + 3;
+                    const edgeCol = Math.floor(edgeX / TILE_SIZE);
+                    const topBody = Math.floor((p.y + 3) / TILE_SIZE);
+                    const botBody = Math.floor((p.y + TILE_SIZE - 5) / TILE_SIZE);
+
+                    if (!isSolid(getTile(edgeCol, topBody)) && !isSolid(getTile(edgeCol, botBody))) {
+                        p.x = nextX;
+                        if (p.grounded) p.walkFrame += 0.18;
+                    }
+                }
+
+                // ハシゴ掴まり判定
+                if (input.up) {
+                    if (isLadder(curTile) && Math.abs(cx - (col * TILE_SIZE + TILE_SIZE / 2)) < 9) {
+                        const topRow = getLadderTopRow(col, row);
+                        const minY = (topRow - 1) * TILE_SIZE;
+                        if (p.y > minY + 1) {
+                            p.onLadder = true;
+                            p.x = col * TILE_SIZE;
+                            p.vy = 0;
+                        }
+                    }
+                } else if (input.down && p.grounded) {
+                    const footRow = Math.floor((p.y + TILE_SIZE + 2) / TILE_SIZE);
+                    const belowT = getTile(col, footRow);
+                    if ((belowT === TILE.LADDER_TOP || isLadder(curTile)) &&
+                        Math.abs(cx - (col * TILE_SIZE + TILE_SIZE / 2)) < 9) {
+                        p.onLadder = true;
+                        p.x = col * TILE_SIZE;
+                        p.y += 3;
+                        p.grounded = false;
+                        p.vy = 0;
+                    }
+                }
+
+                // 頂点ホバー式1ブロックジャンプ＆重力落下
+                if (!p.onLadder) {
+                    if (input.jumpPressed && p.grounded) {
+                        p.vy = JUMP_VELOCITY;
+                        p.grounded = false;
+                        SFX.jump();
+                    }
+
+                    const grav = (!p.grounded && Math.abs(p.vy) <= APEX_THRESHOLD) ? APEX_GRAVITY : GRAVITY;
+                    p.vy = Math.min(6.5, p.vy + grav);
+
+                    const nextY = p.y + p.vy;
+                    const lCol = Math.floor((p.x + 4) / TILE_SIZE);
+                    const rCol = Math.floor((p.x + TILE_SIZE - 5) / TILE_SIZE);
+
+                    if (p.vy < 0) {
+                        const headRow = Math.floor((nextY + 2) / TILE_SIZE);
+                        if (isSolid(getTile(lCol, headRow)) || isSolid(getTile(rCol, headRow))) {
+                            p.y = (headRow + 1) * TILE_SIZE;
+                            p.vy = 0;
+                        } else {
+                            p.y = nextY;
+                        }
+                        p.grounded = false;
+                    } else {
+                        const prevFootRow = Math.floor((p.y + TILE_SIZE - 1) / TILE_SIZE);
+                        const nextFootRow = Math.floor((nextY + TILE_SIZE) / TILE_SIZE);
+                        const lTile = getTile(lCol, nextFootRow);
+                        const rTile = getTile(rCol, nextFootRow);
+
+                        const hitSolid = isSolid(lTile) || isSolid(rTile);
+                        const hitLadderTop = (lTile === TILE.LADDER_TOP || rTile === TILE.LADDER_TOP) && prevFootRow < nextFootRow;
+
+                        if (hitSolid || hitLadderTop) {
+                            p.y = nextFootRow * TILE_SIZE - TILE_SIZE;
+                            p.vy = 0;
+                            p.grounded = true;
+                        } else {
+                            p.y = nextY;
+                            p.grounded = false;
+                        }
+                    }
+                }
+            }
+
+            // --- USE: 道具を使う ---
+            if (input.usePressed && p.cooldown === 0 && p.heldItem) {
+                if (p.heldItem === 'pickaxe') {
+                    const frontCol = Math.floor((cx + p.dir * 16) / TILE_SIZE);
+                    let dug = false;
+                    for (const r of [row, row - 1, row + 1]) {
+                        if (getTile(frontCol, r) === TILE.BRICK) {
+                            state.grid[r][frontCol] = TILE.EMPTY;
+                            emitParticles(frontCol * TILE_SIZE + TILE_SIZE / 2, r * TILE_SIZE + TILE_SIZE / 2, '#d97706', 12);
+                            dug = true;
+                        }
+                    }
+                    if (dug) {
+                        p.heldItem = null; // 1回使い切り消費
+                        p.cooldown = 14;
+                        SFX.dig();
+                        updateHUD();
+                    }
+                } else if (p.heldItem === 'dagger') {
+                    p.heldItem = null;
+                    p.cooldown = 12;
+                    SFX.throw();
+                    updateHUD();
+
+                    state.items.push({
+                        id: Date.now(),
+                        type: 'dagger',
+                        x: p.x + p.dir * 10,
+                        y: p.y + 2,
+                        vx: p.dir * 4.2,
+                        vy: 0,
+                        state: 'flying',
+                        dir: p.dir,
+                        angle: 0,
+                        ignoreUntilClear: false
+                    });
+                }
+            }
+
+            // --- DROP: 道具を置く ---
+            if (input.dropPressed && p.heldItem) {
+                const dropped = p.heldItem;
+                p.heldItem = null;
+                SFX.drop();
+                updateHUD();
+
+                state.items.push({
+                    id: Date.now() + Math.random(),
+                    type: dropped,
+                    x: p.x,
+                    y: p.y,
+                    vx: 0,
+                    vy: 0,
+                    state: 'falling',
+                    dir: p.dir,
+                    angle: 0,
+                    ignoreUntilClear: true
+                });
+            }
+
+            // --- 宝石回収＆出口扉クリア判定 ---
+            const pCol = Math.floor((p.x + TILE_SIZE / 2) / TILE_SIZE);
+            const pRow = Math.floor((p.y + TILE_SIZE / 2) / TILE_SIZE);
+            if (getTile(pCol, pRow) === TILE.GEM) {
+                state.grid[pRow][pCol] = TILE.EMPTY;
+                state.collectedGems++;
+                state.score += 100;
+                SFX.gem();
+                emitParticles(pCol * TILE_SIZE + TILE_SIZE / 2, pRow * TILE_SIZE + TILE_SIZE / 2, '#22d3ee', 10);
+                updateHUD();
+            }
+
+            if (state.collectedGems >= state.totalGems && pCol === state.doorPos.gx && pRow === state.doorPos.gy) {
+                state.score += 500 + state.stage * 100;
+                state.status = 'clear';
+                SFX.clear();
+                updateHUD();
+                showOverlay('clear');
+            }
+        }
+
+        // --- アイテム更新（短剣の回転落下＆離脱ロック） ---
+        function updateItems() {
+            const p = state.player;
+            const pCx = p.x + TILE_SIZE / 2;
+            const pCy = p.y + TILE_SIZE / 2;
+
+            for (const it of state.items) {
+                if (it.state === 'flying') {
+                    const nextX = it.x + it.vx;
+                    const frontX = it.vx > 0 ? nextX + TILE_SIZE - 5 : nextX + 5;
+                    const checkCol = Math.floor(frontX / TILE_SIZE);
+                    const checkRow = Math.floor((it.y + TILE_SIZE / 2) / TILE_SIZE);
+
+                    // 壁・画面端に命中したら跳ね返って回転落下(falling)へ
+                    if (nextX <= TILE_SIZE - 6 || nextX >= CANVAS_W - TILE_SIZE - 18 || isSolid(getTile(checkCol, checkRow))) {
+                        it.state = 'falling';
+                        it.vx = -it.dir * 0.9;
+                        it.vy = -1.8;
+                        SFX.clink();
+                        emitParticles(frontX, it.y + TILE_SIZE / 2, '#e2e8f0', 7);
+                    } else {
+                        it.x = nextX;
+                    }
+
+                    // ミイラへの命中判定
+                    for (const e of state.enemies) {
+                        if (e.respawnTimer > 0) continue;
+                        if (Math.hypot((e.x + TILE_SIZE / 2) - (it.x + TILE_SIZE / 2), (e.y + TILE_SIZE / 2) - (it.y + TILE_SIZE / 2)) < 16) {
+                            e.respawnTimer = MUMMY_RESPAWN_TIME;
+                            state.score += 200;
+                            updateHUD();
+                            SFX.hitEnemy();
+                            emitParticles(e.x + TILE_SIZE / 2, e.y + TILE_SIZE / 2, '#f87171', 14);
+
+                            it.state = 'falling';
+                            it.vx = -it.dir * 0.9;
+                            it.vy = -1.8;
+                            break;
+                        }
+                    }
+                } else if (it.state === 'falling') {
+                    it.vy = Math.min(5.5, it.vy + 0.24);
+                    if (it.type === 'dagger') {
+                        it.angle += 0.35 * (it.dir || 1);
+                    }
+
+                    const nextX = it.x + it.vx;
+                    const sideCol = Math.floor((nextX + (it.vx > 0 ? TILE_SIZE - 6 : 6)) / TILE_SIZE);
+                    const midRow = Math.floor((it.y + TILE_SIZE / 2) / TILE_SIZE);
+                    if (!isSolid(getTile(sideCol, midRow)) && nextX > TILE_SIZE - 4 && nextX < CANVAS_W - TILE_SIZE - 20) {
+                        it.x = nextX;
+                    } else {
+                        it.vx = 0;
+                    }
+
+                    const nextY = it.y + it.vy;
+                    const footRow = Math.floor((nextY + TILE_SIZE) / TILE_SIZE);
+                    const centerCol = Math.floor((it.x + TILE_SIZE / 2) / TILE_SIZE);
+
+                    if (it.vy >= 0 && isFloorSupport(getTile(centerCol, footRow))) {
+                        it.y = footRow * TILE_SIZE - TILE_SIZE;
+                        it.vx = 0;
+                        it.vy = 0;
+                        it.angle = 0;
+                        it.state = 'ground';
+                        SFX.clink();
+                        if (Math.hypot((it.x + TILE_SIZE / 2) - pCx, (it.y + TILE_SIZE / 2) - pCy) < 18) {
+                            it.ignoreUntilClear = true;
+                        }
+                    } else if (nextY > CANVAS_H) {
+                        it.x = 3 * TILE_SIZE;
+                        it.y = 2 * TILE_SIZE;
+                        it.vx = 0;
+                        it.vy = 0;
+                        it.angle = 0;
+                        it.state = 'ground';
+                    } else {
+                        it.y = nextY;
+                    }
+                } else if (it.state === 'ground') {
+                    const dist = Math.hypot((it.x + TILE_SIZE / 2) - pCx, (it.y + TILE_SIZE / 2) - pCy);
+                    if (it.ignoreUntilClear) {
+                        if (dist > 22) it.ignoreUntilClear = false;
+                        continue;
+                    }
+                    // 何か所持している間は自動持ち替えしない
+                    if (p.heldItem === null && dist < 15) {
+                        p.heldItem = it.type;
+                        it.collected = true;
+                        SFX.pickup();
+                        updateHUD();
+                    }
+                }
+            }
+
+            state.items = state.items.filter(it => !it.collected);
+        }
+
+        // --- ミイラ更新（プレイヤーと同じハシゴ上端・下端・空中終端ルール＆復活点滅無敵） ---
+        function updateEnemies() {
+            const p = state.player;
+            const pCx = p.x + TILE_SIZE / 2;
+            const pCy = p.y + TILE_SIZE / 2;
+
+            for (const e of state.enemies) {
+                if (e.respawnTimer > 0) {
+                    e.respawnTimer--;
+                    if (e.respawnTimer === 0) {
+                        e.x = e.spawnX;
+                        e.y = e.spawnY;
+                        e.vy = 0;
+                        e.onLadder = false;
+                        e.ladderCd = 30;
+                        e.spawnInvuln = MUMMY_SPAWN_INVULN;
+                        emitParticles(e.x + TILE_SIZE / 2, e.y + TILE_SIZE / 2, '#cbd5e1', 12);
+                    }
+                    continue;
+                }
+
+                if (e.spawnInvuln > 0) e.spawnInvuln--;
+                if (e.ladderCd > 0) e.ladderCd--;
+                e.animFrame += 0.09;
+
+                const eCx = e.x + TILE_SIZE / 2;
+                const eCy = e.y + TILE_SIZE / 2;
+                const col = Math.floor(eCx / TILE_SIZE);
+                const row = Math.floor(eCy / TILE_SIZE);
+
+                if (e.onLadder) {
+                    const targetX = col * TILE_SIZE;
+                    e.x += Math.sign(targetX - e.x) * Math.min(Math.abs(targetX - e.x), 1.4);
+
+                    const topRow = getLadderTopRow(col, row);
+                    const bottomRow = getLadderBottomRow(col, row);
+                    const minY = (topRow - 1) * TILE_SIZE;
+                    const maxLadderY = bottomRow * TILE_SIZE;
+
+                    if (e.ladderDir < 0) {
+                        e.y -= MUMMY_SPEED;
+                        if (e.y <= minY) {
+                            e.y = minY;
+                            e.onLadder = false;
+                            e.ladderCd = 45;
+                            e.dir = pCx >= eCx ? 1 : -1;
+                        }
+                    } else {
+                        const nextFootY = e.y + TILE_SIZE + MUMMY_SPEED;
+                        const belowRow = Math.floor(nextFootY / TILE_SIZE);
+                        if (isSolid(getTile(col, belowRow))) {
+                            e.y = belowRow * TILE_SIZE - TILE_SIZE;
+                            e.onLadder = false;
+                            e.ladderCd = 45;
+                            e.dir = pCx >= eCx ? 1 : -1;
+                        } else {
+                            e.y += MUMMY_SPEED;
+                            if (e.y >= maxLadderY) {
+                                const underRow = bottomRow + 1;
+                                if (underRow >= ROWS || isSolid(getTile(col, underRow))) {
+                                    e.y = maxLadderY;
+                                    e.onLadder = false;
+                                    e.ladderCd = 45;
+                                    e.dir = pCx >= eCx ? 1 : -1;
+                                } else {
+                                    // 空中終端ハシゴ：即座に手を離して重力落下へ移行
+                                    e.onLadder = false;
+                                    e.vy = 0.5;
+                                    e.ladderCd = 45;
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    const footRow = Math.floor((e.y + TILE_SIZE + 1) / TILE_SIZE);
+                    const lCol = Math.floor((e.x + 4) / TILE_SIZE);
+                    const rCol = Math.floor((e.x + TILE_SIZE - 5) / TILE_SIZE);
+                    const grounded = isFloorSupport(getTile(lCol, footRow)) || isFloorSupport(getTile(rCol, footRow));
+
+                    if (!grounded) {
+                        e.vy = Math.min(5.5, e.vy + GRAVITY);
+                        const nextY = e.y + e.vy;
+                        const nextFootRow = Math.floor((nextY + TILE_SIZE) / TILE_SIZE);
+                        if (isFloorSupport(getTile(lCol, nextFootRow)) || isFloorSupport(getTile(rCol, nextFootRow))) {
+                            e.y = nextFootRow * TILE_SIZE - TILE_SIZE;
+                            e.vy = 0;
+                        } else {
+                            e.y = nextY;
+                        }
+                    } else {
+                        e.y = footRow * TILE_SIZE - TILE_SIZE;
+                        e.vy = 0;
+
+                        if (e.ladderCd === 0 && Math.abs(eCx - (col * TILE_SIZE + TILE_SIZE / 2)) < 4) {
+                            const hereT = getTile(col, row);
+                            const belowT = getTile(col, row + 1);
+                            if (pCy < eCy - 16 && isLadder(hereT)) {
+                                const topRow = getLadderTopRow(col, row);
+                                const minY = (topRow - 1) * TILE_SIZE;
+                                if (e.y > minY + 1) {
+                                    e.onLadder = true;
+                                    e.ladderDir = -1;
+                                    e.x = col * TILE_SIZE;
+                                    continue;
+                                }
+                            } else if (pCy > eCy + 16 && (belowT === TILE.LADDER_TOP || isLadder(hereT))) {
+                                e.onLadder = true;
+                                e.ladderDir = 1;
+                                e.x = col * TILE_SIZE;
+                                e.y += 2;
+                                continue;
+                            }
+                        }
+
+                        const nextX = e.x + e.dir * MUMMY_SPEED;
+                        const frontX = e.dir > 0 ? nextX + TILE_SIZE - 3 : nextX + 3;
+                        const frontCol = Math.floor(frontX / TILE_SIZE);
+                        const aheadSupport = isFloorSupport(getTile(frontCol, row + 1));
+
+                        if (isSolid(getTile(frontCol, row)) || !aheadSupport) {
+                            e.dir *= -1;
+                        } else {
+                            e.x = nextX;
+                            if (Math.abs(pCy - eCy) < 18 && Math.random() < 0.02) {
+                                e.dir = pCx >= eCx ? 1 : -1;
+                            }
+                        }
+                    }
+                }
+
+                // プレイヤー接触判定（点滅無敵中はダメージ無効）
+                if (e.spawnInvuln <= 0 && Math.hypot((e.x + TILE_SIZE / 2) - pCx, (e.y + TILE_SIZE / 2) - pCy) < 14) {
+                    state.lives = Math.max(0, state.lives - 1);
+                    SFX.miss();
+                    emitParticles(pCx, pCy, '#fb7185', 18);
+                    updateHUD();
+                    if (state.lives <= 0) {
+                        state.status = 'gameover';
+                        showOverlay('gameover');
+                    } else {
+                        state.status = 'miss';
+                        showOverlay('miss');
+                    }
+                    return;
+                }
+            }
+        }
+
+        function updateParticles() {
+            for (const pt of state.particles) {
+                pt.x += pt.vx;
+                pt.y += pt.vy;
+                pt.vy += 0.1;
+                pt.life--;
+            }
+            state.particles = state.particles.filter(pt => pt.life > 0);
+        }
+
+        // --- 8-bit ピクセル描画 ---
+        function render() {
+            ctx.fillStyle = '#0b0e17';
+            ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+            // 背景ピラミッド石組みライン
+            ctx.strokeStyle = 'rgba(217, 119, 6, 0.08)';
+            ctx.lineWidth = 1;
+            for (let x = 0; x <= CANVAS_W; x += TILE_SIZE) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, CANVAS_H);
+                ctx.stroke();
+            }
+            for (let y = 0; y <= CANVAS_H; y += TILE_SIZE) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(CANVAS_W, y);
+                ctx.stroke();
+            }
+
+            const doorOpen = state.collectedGems >= state.totalGems;
+            const pulse = Math.sin(state.frame * 0.12) * 1.5;
+
+            for (let y = 0; y < ROWS; y++) {
+                for (let x = 0; x < COLS; x++) {
+                    const t = state.grid[y][x];
+                    const px = x * TILE_SIZE;
+                    const py = y * TILE_SIZE;
+
+                    if (t === TILE.SOLID) {
+                        ctx.fillStyle = '#92400e';
+                        ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+                        ctx.fillStyle = '#d97706';
+                        ctx.fillRect(px + 2, py + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+                        ctx.fillStyle = '#78350f';
+                        ctx.fillRect(px + 3, py + 11, TILE_SIZE - 6, 2);
+                        ctx.fillRect(px + 11, py + 2, 2, 9);
+                    } else if (t === TILE.BRICK) {
+                        ctx.fillStyle = '#7f1d1d';
+                        ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+                        ctx.fillStyle = '#b91c1c';
+                        ctx.fillRect(px + 2, py + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+                        ctx.strokeStyle = '#450a0a';
+                        ctx.lineWidth = 1.5;
+                        ctx.beginPath();
+                        ctx.moveTo(px + 5, py + 3);
+                        ctx.lineTo(px + 12, py + 12);
+                        ctx.lineTo(px + 8, py + 20);
+                        ctx.moveTo(px + 12, py + 12);
+                        ctx.lineTo(px + 19, py + 15);
+                        ctx.stroke();
+                    } else if (t === TILE.LADDER || t === TILE.LADDER_TOP) {
+                        ctx.fillStyle = '#ca8a04';
+                        ctx.fillRect(px + 4, py, 3, TILE_SIZE);
+                        ctx.fillRect(px + TILE_SIZE - 7, py, 3, TILE_SIZE);
+                        for (let ry = 3; ry < TILE_SIZE; ry += 6) {
+                            ctx.fillStyle = (t === TILE.LADDER_TOP && ry === 3) ? '#fef08a' : '#eab308';
+                            ctx.fillRect(px + 6, py + ry, TILE_SIZE - 12, 2);
+                        }
+                    } else if (t === TILE.GEM) {
+                        const cx = px + TILE_SIZE / 2;
+                        const cy = py + TILE_SIZE / 2 + pulse * 0.4;
+                        ctx.fillStyle = '#22d3ee';
+                        ctx.beginPath();
+                        ctx.moveTo(cx, cy - 7);
+                        ctx.lineTo(cx + 7, cy);
+                        ctx.lineTo(cx, cy + 7);
+                        ctx.lineTo(cx - 7, cy);
+                        ctx.closePath();
+                        ctx.fill();
+                        ctx.fillStyle = '#fde047';
+                        ctx.fillRect(cx - 2, cy - 2, 4, 4);
+                    } else if (t === TILE.DOOR) {
+                        ctx.fillStyle = doorOpen ? '#059669' : '#475569';
+                        ctx.fillRect(px + 3, py + 2, TILE_SIZE - 6, TILE_SIZE - 2);
+                        ctx.strokeStyle = doorOpen ? '#6ee7b7' : '#eab308';
+                        ctx.lineWidth = 1.5;
+                        ctx.strokeRect(px + 3, py + 2, TILE_SIZE - 6, TILE_SIZE - 2);
+                        if (doorOpen) {
+                            ctx.fillStyle = '#022c22';
+                            ctx.fillRect(px + 6, py + 5, TILE_SIZE - 12, TILE_SIZE - 5);
+                        } else {
+                            ctx.fillStyle = '#eab308';
+                            ctx.beginPath();
+                            ctx.arc(px + TILE_SIZE / 2, py + TILE_SIZE / 2 + 1, 3, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                    }
+                }
+            }
+
+            // アイテム描画
+            for (const it of state.items) {
+                const cx = it.x + TILE_SIZE / 2;
+                const cy = it.y + TILE_SIZE / 2 + (it.state === 'ground' ? pulse * 0.35 : 0);
+
+                ctx.save();
+                ctx.translate(cx, cy);
+                if (it.state === 'falling') ctx.rotate(it.angle);
+                else if (it.state === 'flying') ctx.scale(it.dir, 1);
+
+                if (it.type === 'pickaxe') {
+                    ctx.strokeStyle = '#92400e';
+                    ctx.lineWidth = 2.5;
+                    ctx.beginPath();
+                    ctx.moveTo(-5, 6);
+                    ctx.lineTo(5, -5);
+                    ctx.stroke();
+
+                    ctx.strokeStyle = '#e2e8f0';
+                    ctx.lineWidth = 2.5;
+                    ctx.beginPath();
+                    ctx.arc(3, -2, 7, -Math.PI * 0.75, Math.PI * 0.25);
+                    ctx.stroke();
+                } else {
+                    ctx.fillStyle = '#f8fafc';
+                    ctx.beginPath();
+                    ctx.moveTo(-6, -2.5);
+                    ctx.lineTo(8, 0);
+                    ctx.lineTo(-6, 2.5);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.fillStyle = '#eab308';
+                    ctx.fillRect(-6, -5, 2.5, 10);
+                    ctx.fillStyle = '#78350f';
+                    ctx.fillRect(-10, -1.5, 4, 3);
+                }
+                ctx.restore();
+            }
+
+            // ミイラ描画
+            for (const e of state.enemies) {
+                if (e.respawnTimer > 0) continue;
+                ctx.save();
+                if (e.spawnInvuln > 0) {
+                    ctx.globalAlpha = Math.floor(e.spawnInvuln / 4) % 2 === 0 ? 0.22 : 1.0;
+                }
+                ctx.translate(Math.round(e.x) + TILE_SIZE / 2, Math.round(e.y) + TILE_SIZE / 2);
+                ctx.scale(e.dir, 1);
+
+                ctx.fillStyle = '#e2e8f0';
+                ctx.fillRect(-5, -10, 10, 21);
+                ctx.fillStyle = '#64748b';
+                for (let by = -7; by <= 7; by += 4) {
+                    ctx.fillRect(-5, by, 10, 1.5);
+                }
+                ctx.fillStyle = '#ef4444';
+                ctx.fillRect(1, -7, 2.5, 2.5);
+                ctx.fillStyle = '#cbd5e1';
+                ctx.fillRect(3, -2 + Math.sin(e.animFrame) * 0.8, 7, 3);
+                ctx.restore();
+            }
+
+            // プレイヤー描画
+            const p = state.player;
+            const leg = p.grounded ? Math.sin(p.walkFrame) * 2.2 : 0;
+            ctx.save();
+            ctx.translate(Math.round(p.x) + TILE_SIZE / 2, Math.round(p.y) + TILE_SIZE / 2);
+            ctx.scale(p.dir, 1);
+
+            ctx.fillStyle = '#eab308';
+            ctx.fillRect(-7, -11, 14, 3);
+            ctx.fillRect(-5, -14, 10, 3);
+
+            ctx.fillStyle = '#fed7aa';
+            ctx.fillRect(-4, -8, 8, 6);
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(1.5, -6.5, 1.5, 1.5);
+
+            ctx.fillStyle = '#3b82f6';
+            ctx.fillRect(-5, -2, 10, 8);
+
+            ctx.fillStyle = '#78350f';
+            ctx.fillRect(-4, 6, 3, 5 + leg * 0.35);
+            ctx.fillRect(1, 6, 3, 5 - leg * 0.35);
+
+            if (p.heldItem === 'pickaxe') {
+                ctx.strokeStyle = '#fde047';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(5, 3);
+                ctx.lineTo(10, -4);
+                ctx.stroke();
+            } else if (p.heldItem === 'dagger') {
+                ctx.fillStyle = '#f8fafc';
+                ctx.fillRect(5, 0, 8, 2.5);
+            }
+            ctx.restore();
+
+            // パーティクル描画
+            for (const pt of state.particles) {
+                ctx.globalAlpha = Math.max(0, pt.life / pt.maxLife);
+                ctx.fillStyle = pt.color;
+                ctx.fillRect(pt.x, pt.y, pt.size, pt.size);
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        // --- メインループ ---
+        function loop() {
+            state.frame++;
+            if (state.status === 'playing') {
+                updatePlayer();
+                updateItems();
+                updateEnemies();
+            }
+            updateParticles();
+            render();
+
+            input.jumpPressed = false;
+            input.usePressed = false;
+            input.dropPressed = false;
+            requestAnimationFrame(loop);
+        }
+
+        // 即時初期化＆起動
+        syncViewportHeight();
+        startStage(1, true);
+        requestAnimationFrame(loop);
+    })();
+    </script>
+</body>
+</html>
