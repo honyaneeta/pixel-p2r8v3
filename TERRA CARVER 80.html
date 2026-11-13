@@ -1,0 +1,1767 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>TERRA CARVER 80 - Pseudo-3D Terrain & Energy Game</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    /* Strictly disable OS text selection, callout popups, and selection haptics across all elements */
+    html, body, *, *::before, *::after {
+      box-sizing: border-box;
+      user-select: none !important;
+      -webkit-user-select: none !important;
+      -moz-user-select: none !important;
+      -ms-user-select: none !important;
+      -webkit-touch-callout: none !important;
+      -webkit-tap-highlight-color: transparent !important;
+      touch-action: none !important;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100dvh;
+      overflow: hidden;
+      overscroll-behavior: none;
+      background-color: #14101d; /* Sweetie-16 deep dark */
+      color: #f4f4f4;
+      font-family: 'DotGothic16', monospace;
+    }
+
+    /* Crisp pixel-art upscaling for the 240x136 TIC-80 logical canvas */
+    canvas#gameCanvas {
+      image-rendering: -moz-crisp-edges;
+      image-rendering: -webkit-crisp-edges;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      box-shadow: 0 0 0 3px #333c57, 0 12px 32px rgba(0, 0, 0, 0.75);
+      background-color: #1a1c2c;
+    }
+
+    .pixel-font {
+      font-family: 'Press Start 2P', 'DotGothic16', monospace;
+    }
+
+    /* Tactile retro button styling */
+    .retro-btn {
+      background: #333c57;
+      border: 2px solid #566c86;
+      box-shadow: 0 4px 0 #1a1c2c;
+      transition: transform 0.05s ease, box-shadow 0.05s ease, background-color 0.1s ease;
+    }
+    .retro-btn:active, .retro-btn.active {
+      transform: translateY(3px);
+      box-shadow: 0 1px 0 #1a1c2c;
+      background: #41a6f6;
+      border-color: #73eff7;
+      color: #1a1c2c;
+    }
+
+    .view-btn {
+      background: #29366f;
+      border: 2px solid #41a6f6;
+      box-shadow: 0 4px 0 #1a1c2c;
+      transition: transform 0.05s ease, box-shadow 0.05s ease, background-color 0.1s ease;
+    }
+    .view-btn:active, .view-btn.overhead-active {
+      background: #3b5dc9;
+      border-color: #73eff7;
+    }
+    .view-btn:active {
+      transform: translateY(3px);
+      box-shadow: 0 1px 0 #1a1c2c;
+    }
+
+    .carve-btn {
+      background: #b13e53;
+      border: 2px solid #ef7d57;
+      box-shadow: 0 5px 0 #5d275d;
+    }
+    .carve-btn:active, .carve-btn.active {
+      transform: translateY(4px);
+      box-shadow: 0 1px 0 #5d275d;
+      background: #ffcd75;
+      border-color: #f4f4f4;
+      color: #1a1c2c;
+    }
+
+    /* Subtle CRT scanline overlay on screen wrapper */
+    .scanlines::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        rgba(18, 16, 16, 0) 50%,
+        rgba(0, 0, 0, 0.18) 50%
+      );
+      background-size: 100% 4px;
+      pointer-events: none;
+      border-radius: 0.5rem;
+    }
+  </style>
+</head>
+<body class="flex flex-col items-center justify-between p-2 sm:p-4">
+
+  <!-- Top Compact Title & Slope Legend Bar -->
+  <header class="w-full max-w-3xl flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 bg-[#1a1c2c] border border-[#333c57] rounded-lg text-xs sm:text-sm">
+    <div class="flex items-center gap-2">
+      <span class="inline-block w-2.5 h-2.5 bg-[#38b764] rounded-xs"></span>
+      <h1 class="pixel-font text-[11px] sm:text-sm text-[#ffcd75] tracking-wider">TERRA CARVER 80</h1>
+      <span class="hidden sm:inline text-[#94b0c2] text-xs">[240x136 TIC-80]</span>
+    </div>
+    <!-- Slope Risk Color Legend & Quick View/Audio Toggles -->
+    <div class="flex items-center gap-2 sm:gap-3 text-[11px] sm:text-xs">
+      <span class="flex items-center gap-1"><i class="w-2.5 h-2.5 inline-block bg-[#38b764]"></i>平坦(0)</span>
+      <span class="flex items-center gap-1"><i class="w-2.5 h-2.5 inline-block bg-[#ef7d57]"></i>坂(注意)</span>
+      <span class="flex items-center gap-1"><i class="w-2.5 h-2.5 inline-block bg-[#b13e53]"></i>崖(危険)</span>
+      <button id="headerViewBtn" type="button" class="px-2 py-0.5 bg-[#29366f] border border-[#41a6f6] hover:bg-[#3b5dc9] rounded text-[#73eff7] text-xs cursor-pointer">
+        👁 3D
+      </button>
+      <button id="soundToggleBtn" type="button" class="px-2 py-0.5 bg-[#333c57] hover:bg-[#566c86] rounded text-[#f4f4f4] text-xs cursor-pointer">
+        ♪ ON
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Viewport Container (Maintains 240:136 Aspect Ratio cleanly) -->
+  <main id="viewportContainer" class="relative flex-1 w-full max-w-4xl flex items-center justify-center my-1 min-h-0">
+    <div id="canvasWrapper" class="relative scanlines flex items-center justify-center rounded-lg overflow-hidden">
+      <canvas id="gameCanvas" width="240" height="136"></canvas>
+    </div>
+  </main>
+
+  <!-- Controls Footer: Comfortably elevated from bottom edge for ergonomic thumb reach -->
+  <footer class="w-full max-w-3xl flex flex-col gap-2 pb-11 sm:pb-4">
+    <!-- Desktop Keyboard Hint -->
+    <div class="hidden md:flex items-center justify-between px-3 py-1.5 bg-[#1a1c2c] border border-[#333c57] rounded-lg text-xs text-[#94b0c2]">
+      <div>
+        <span class="text-[#f4f4f4] font-bold">[矢印 / WASD]</span> 移動　
+        <span class="text-[#73eff7] font-bold">[SPACE / Z]</span> 平坦化 / <span class="text-[#ef7d57] font-bold">最大で深掘り</span>　
+        <span class="text-[#ffcd75] font-bold">[V]</span> 俯瞰　
+        <span class="text-[#a7f070] font-bold">[M]</span> 音切替
+      </div>
+      <div>
+        <span class="text-[#73eff7]">◆回復</span> / <span class="text-[#ffcd75]">★お宝</span> / <span class="text-[#38b764]">🚩ゴール</span>
+      </div>
+    </div>
+
+    <!-- Touch / On-Screen Controls (Elevated comfortably from bottom screen edge) -->
+    <div class="flex md:hidden items-center justify-between gap-2.5 px-2 mb-3">
+      <!-- Virtual 4-Way D-Pad -->
+      <div class="grid grid-cols-3 gap-1.5 w-36 h-32">
+        <div></div>
+        <button type="button" data-dir="up" class="retro-btn rounded-lg flex items-center justify-center text-lg font-bold text-[#f4f4f4]">▲</button>
+        <div></div>
+        <button type="button" data-dir="left" class="retro-btn rounded-lg flex items-center justify-center text-lg font-bold text-[#f4f4f4]">◀</button>
+        <button type="button" data-dir="down" class="retro-btn rounded-lg flex items-center justify-center text-lg font-bold text-[#f4f4f4]">▼</button>
+        <button type="button" data-dir="right" class="retro-btn rounded-lg flex items-center justify-center text-lg font-bold text-[#f4f4f4]">▶</button>
+      </div>
+
+      <!-- Center Camera Angle Toggle Button (3D <-> Overhead High-Angle) -->
+      <div class="flex flex-col items-center justify-center gap-2">
+        <button type="button" id="touchViewBtn" class="view-btn w-20 h-16 rounded-xl flex flex-col items-center justify-center text-[#f4f4f4] font-bold">
+          <span class="pixel-font text-[10px] text-[#73eff7] mb-1">VIEW</span>
+          <span id="touchViewLabel" class="text-xs">3D視点</span>
+        </button>
+        <span class="text-[10px] text-[#94b0c2] text-center leading-tight">裏側の坂も<br>俯瞰で確認</span>
+      </div>
+
+      <!-- Holdable Carve Action Button -->
+      <button type="button" id="touchCarveBtn" class="carve-btn w-28 h-28 rounded-2xl flex flex-col items-center justify-center text-[#f4f4f4] font-bold">
+        <span class="pixel-font text-xs mb-1">CARVE</span>
+        <span class="text-[11px]">長押しで削る</span>
+      </button>
+    </div>
+  </footer>
+
+  <script>
+    /**
+     * TERRA CARVER 80
+     * TIC-80 Spec (240x136 logical pixels, Sweetie-16 Palette)
+     * Pseudo-3D Triangle Heightmap Terrain Leveling, Overcharge Excavation,
+     * Overhead Camera Toggle, Energy-to-Score Bonus, & 4-Channel 8-bit Chiptune BGM
+     */
+
+    // =========================================================================
+    // 0. GLOBAL ANTI-SELECTION / ANTI-CALLOUT / ANTI-VIBRATION GUARDS
+    // =========================================================================
+    ['contextmenu', 'selectstart', 'dragstart'].forEach((evtName) => {
+      document.addEventListener(evtName, (e) => {
+        e.preventDefault();
+        return false;
+      }, { passive: false });
+    });
+
+    document.addEventListener('touchstart', (e) => {
+      if (e.target && (e.target.id === 'soundToggleBtn' || e.target.id === 'headerViewBtn')) return;
+      e.preventDefault();
+    }, { passive: false });
+
+    document.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+    }, { passive: false });
+
+    // =========================================================================
+    // 1. TIC-80 SWEETIE-16 PALETTE & CONFIGURATION
+    // =========================================================================
+    const PAL = {
+      BLACK:      '#1a1c2c', // 0
+      PURPLE:     '#5d275d', // 1
+      RED:        '#b13e53', // 2
+      ORANGE:     '#ef7d57', // 3
+      YELLOW:     '#ffcd75', // 4
+      LIGHTGREEN: '#a7f070', // 5
+      GREEN:      '#38b764', // 6
+      DARKGREEN:  '#257179', // 7
+      DARKBLUE:   '#29366f', // 8
+      BLUE:       '#3b5dc9', // 9
+      LIGHTBLUE:  '#41a6f6', // 10
+      CYAN:       '#73eff7', // 11
+      WHITE:      '#f4f4f4', // 12
+      LIGHTGRAY:  '#94b0c2', // 13
+      GRAY:       '#566c86', // 14
+      DARKGRAY:   '#333c57'  // 15
+    };
+
+    const SCREEN_W = 240;
+    const SCREEN_H = 136;
+
+    // Grid dimensions (Each quad cell is divided into 2 triangles)
+    const GRID_COLS = 11;
+    const GRID_ROWS = 44;
+    const SAFE_SLOPE = 0.42;           // Height difference threshold that costs 0 energy
+    const MAX_ENERGY = 100;
+    const OVERCHARGE_THRESHOLD = 0.75; // >= 75% charge enters deep excavation mode
+    const ENERGY_BONUS_RATE = 15;      // Points per 1 unit of remaining energy on stage clear
+
+    // =========================================================================
+    // 2. TIC-80 / PSG 4-CHANNEL 8-BIT CHIPTUNE BGM & SFX ENGINE (Web Audio API)
+    // =========================================================================
+    class RetroAudio {
+      constructor() {
+        this.ctx = null;
+        this.enabled = true;
+        this.chargeOsc = null;
+        this.chargeGain = null;
+
+        // Custom 25% Duty-Cycle Pulse PeriodicWave for authentic 8-bit chiptune lead
+        this.pulse25Wave = null;
+        // Reusable 1-second White Noise AudioBuffer for 8-bit percussion
+        this.noiseBuffer = null;
+
+        // Sequencer state (64 16th-note steps = 4 bars loop)
+        this.bgmPlaying = false;
+        this.bgmStep = 0;
+        this.bgmTimer = 0;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (AudioContext) {
+            this.ctx = new AudioContext();
+            this._buildCustomWaves();
+          }
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      _buildCustomWaves() {
+        if (!this.ctx) return;
+
+        // Fourier coefficients for a crisp 25% duty cycle pulse wave
+        const harmonics = 32;
+        const real = new Float32Array(harmonics);
+        const imag = new Float32Array(harmonics);
+        const duty = 0.25;
+        for (let n = 1; n < harmonics; n++) {
+          real[n] = (2 / (n * Math.PI)) * Math.sin(n * Math.PI * duty);
+          imag[n] = (2 / (n * Math.PI)) * (1 - Math.cos(n * Math.PI * duty));
+        }
+        this.pulse25Wave = this.ctx.createPeriodicWave(real, imag);
+
+        // White noise buffer for snare & hi-hat
+        const sampleRate = this.ctx.sampleRate;
+        const length = sampleRate * 1.0;
+        this.noiseBuffer = this.ctx.createBuffer(1, length, sampleRate);
+        const data = this.noiseBuffer.getChannelData(0);
+        for (let i = 0; i < length; i++) {
+          data[i] = Math.random() * 2 - 1;
+        }
+      }
+
+      midiToFreq(midi) {
+        return 440 * Math.pow(2, (midi - 69) / 12);
+      }
+
+      startBGM() {
+        this.bgmPlaying = true;
+      }
+
+      stopBGM() {
+        this.bgmPlaying = false;
+      }
+
+      resetBGM() {
+        this.bgmStep = 0;
+        this.bgmTimer = 0;
+      }
+
+      /**
+       * Called every frame (60fps) to drive the 4-channel 8-bit chiptune sequencer
+       */
+      tickBGM(isPlaying, energyRatio) {
+        if (!this.enabled || !this.bgmPlaying) return;
+        if (!this.ctx || this.ctx.state !== 'running') return;
+
+        // Tempo speeds up slightly when energy is critical (<= 25%) for urgency!
+        const isPinch = isPlaying && energyRatio > 0 && energyRatio <= 0.25;
+        const framesPerStep = isPinch ? 6 : 7; // ~150 BPM normal, ~175 BPM pinch
+
+        this.bgmTimer++;
+        if (this.bgmTimer < framesPerStep) return;
+        this.bgmTimer = 0;
+
+        const s = this.bgmStep % 64;
+        const stepDur = (framesPerStep / 60) * 0.92;
+
+        // --- CH 1: 25% Pulse Lead Melody (Adventurous 8-bit theme in C Major / A Minor) ---
+        // MIDI note numbers (0 = rest)
+        const leadPattern = [
+          // Bar 1 (C)
+          72, 0, 76, 79,  84, 0, 79, 76,  74, 0, 77, 81,  79, 0, 76, 0,
+          // Bar 2 (Am -> F)
+          76, 0, 72, 76,  81, 0, 79, 76,  74, 72, 71, 72, 74, 0, 0, 0,
+          // Bar 3 (F -> G)
+          77, 0, 81, 84,  83, 0, 79, 74,  76, 0, 79, 84,  86, 0, 84, 83,
+          // Bar 4 (G7 -> C turnaround)
+          84, 0, 79, 76,  74, 0, 71, 74,  72, 0, 67, 72,  76, 0, 0, 0
+        ];
+
+        // --- CH 2: 50% Square Counter-Melody / Arpeggio ---
+        const arpPattern = [
+          // Bar 1
+          60, 64, 67, 64,  60, 64, 67, 64,  62, 65, 69, 65,  60, 64, 67, 64,
+          // Bar 2
+          57, 60, 64, 60,  57, 60, 64, 60,  55, 59, 62, 59,  55, 59, 62, 67,
+          // Bar 3
+          53, 57, 60, 57,  55, 59, 62, 59,  60, 64, 67, 64,  57, 60, 64, 60,
+          // Bar 4
+          53, 57, 60, 65,  55, 59, 62, 67,  60, 64, 67, 72,  67, 64, 60, 0
+        ];
+
+        // --- CH 3: Triangle Wave Bassline ---
+        const bassPattern = [
+          // Bar 1
+          48, 0, 48, 52,  55, 0, 52, 0,   50, 0, 50, 53,  48, 0, 43, 0,
+          // Bar 2
+          45, 0, 45, 48,  52, 0, 48, 0,   43, 0, 47, 0,   50, 0, 43, 0,
+          // Bar 3
+          41, 0, 41, 45,  43, 0, 47, 0,   48, 0, 52, 0,   45, 0, 52, 0,
+          // Bar 4
+          41, 0, 45, 0,   43, 0, 47, 50,  48, 0, 36, 0,   48, 0, 43, 0
+        ];
+
+        // --- CH 4: Noise Percussion (1 = Hat, 2 = Snare, 3 = Kick) ---
+        const drumPattern = [
+          3, 1, 1, 1,  2, 1, 1, 1,  3, 1, 3, 1,  2, 1, 1, 1,
+          3, 1, 1, 1,  2, 1, 1, 1,  3, 1, 3, 1,  2, 1, 2, 2,
+          3, 1, 1, 1,  2, 1, 1, 1,  3, 1, 3, 1,  2, 1, 1, 1,
+          3, 1, 3, 1,  2, 1, 2, 1,  3, 1, 1, 1,  2, 2, 2, 0
+        ];
+
+        const leadNote = leadPattern[s];
+        const arpNote = arpPattern[s];
+        const bassNote = bassPattern[s];
+        const drumHit = drumPattern[s];
+
+        if (leadNote > 0) {
+          this._playBgmVoice(this.midiToFreq(leadNote), stepDur * 1.15, 'pulse25', isPlaying ? 0.036 : 0.024);
+        }
+        if (arpNote > 0) {
+          this._playBgmVoice(this.midiToFreq(arpNote), stepDur * 0.75, 'square', isPlaying ? 0.018 : 0.012);
+        }
+        if (bassNote > 0) {
+          this._playBgmVoice(this.midiToFreq(bassNote), stepDur * 1.25, 'triangle', isPlaying ? 0.052 : 0.036);
+        }
+        if (drumHit > 0) {
+          this._playBgmDrum(drumHit, isPlaying ? 0.024 : 0.016);
+        }
+
+        this.bgmStep = (this.bgmStep + 1) % 64;
+      }
+
+      _playBgmVoice(freq, duration, waveType, volume) {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        if (waveType === 'pulse25' && this.pulse25Wave) {
+          osc.setPeriodicWave(this.pulse25Wave);
+        } else {
+          osc.type = waveType;
+        }
+        osc.frequency.setValueAtTime(freq, now);
+
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.linearRampToValueAtTime(volume, now + 0.008);
+        gain.gain.exponentialRampToValueAtTime(0.0008, now + duration);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + duration + 0.01);
+      }
+
+      _playBgmDrum(type, baseVol) {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+
+        if (type === 3) {
+          // 8-bit Triangle Pitch-Drop Kick
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(145, now);
+          osc.frequency.exponentialRampToValueAtTime(42, now + 0.065);
+          gain.gain.setValueAtTime(baseVol * 1.9, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.075);
+          return;
+        }
+
+        if (!this.noiseBuffer) return;
+        const src = this.ctx.createBufferSource();
+        src.buffer = this.noiseBuffer;
+
+        const filter = this.ctx.createBiquadFilter();
+        const gain = this.ctx.createGain();
+
+        if (type === 1) {
+          // Crisp Closed Hi-Hat
+          filter.type = 'highpass';
+          filter.frequency.setValueAtTime(6500, now);
+          gain.gain.setValueAtTime(baseVol * 0.55, now);
+          gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.028);
+          src.connect(filter);
+          filter.connect(gain);
+          gain.connect(this.ctx.destination);
+          src.start(now);
+          src.stop(now + 0.032);
+        } else if (type === 2) {
+          // Punchy 8-bit Snare
+          filter.type = 'bandpass';
+          filter.frequency.setValueAtTime(1800, now);
+          gain.gain.setValueAtTime(baseVol * 1.35, now);
+          gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.075);
+          src.connect(filter);
+          filter.connect(gain);
+          gain.connect(this.ctx.destination);
+          src.start(now);
+          src.stop(now + 0.08);
+        }
+      }
+
+      playTone(freq, duration, type = 'square', volume = 0.08, slideTo = null) {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, now);
+        if (slideTo) {
+          osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), now + duration);
+        }
+
+        gain.gain.setValueAtTime(volume, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + duration);
+      }
+
+      playStep(slopeCost) {
+        if (slopeCost <= 0) {
+          this.playTone(260, 0.045, 'triangle', 0.06, 320);
+        } else if (slopeCost < 8) {
+          this.playTone(190, 0.08, 'sawtooth', 0.07, 150);
+        } else {
+          this.playTone(140, 0.14, 'square', 0.1, 75);
+        }
+      }
+
+      playViewSwitch(toOverhead) {
+        if (toOverhead) {
+          this.playTone(330, 0.07, 'triangle', 0.08, 520);
+        } else {
+          this.playTone(520, 0.07, 'triangle', 0.08, 330);
+        }
+      }
+
+      startCharge() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+        this.stopCharge();
+
+        const now = this.ctx.currentTime;
+        this.chargeOsc = this.ctx.createOscillator();
+        this.chargeGain = this.ctx.createGain();
+        this.chargeOsc.type = 'square';
+        this.chargeOsc.frequency.setValueAtTime(180, now);
+        this.chargeGain.gain.setValueAtTime(0.045, now);
+
+        this.chargeOsc.connect(this.chargeGain);
+        this.chargeGain.connect(this.ctx.destination);
+        this.chargeOsc.start(now);
+      }
+
+      updateCharge(ratio) {
+        if (this.chargeOsc && this.ctx) {
+          const isOvercharge = ratio >= OVERCHARGE_THRESHOLD;
+          this.chargeOsc.type = isOvercharge ? 'sawtooth' : 'square';
+          const targetFreq = isOvercharge
+            ? 560 + (ratio - OVERCHARGE_THRESHOLD) * 900
+            : 180 + ratio * 460;
+          this.chargeOsc.frequency.setTargetAtTime(targetFreq, this.ctx.currentTime, 0.02);
+        }
+      }
+
+      stopCharge() {
+        if (this.chargeOsc) {
+          try {
+            this.chargeOsc.stop();
+            this.chargeOsc.disconnect();
+          } catch (e) {}
+          this.chargeOsc = null;
+        }
+      }
+
+      playCarve(power, isOvercharge) {
+        this.stopCharge();
+        if (isOvercharge) {
+          this.playTone(110, 0.28, 'sawtooth', 0.14, 32);
+          for (let i = 0; i < 8; i++) {
+            setTimeout(() => {
+              const f = 65 + Math.random() * 130 - i * 6;
+              this.playTone(Math.max(35, f), 0.08, 'square', 0.11, 30);
+            }, i * 25);
+          }
+        } else {
+          const steps = 4 + Math.floor(power * 4);
+          for (let i = 0; i < steps; i++) {
+            setTimeout(() => {
+              const f = 140 + Math.random() * 120 - i * 12;
+              this.playTone(Math.max(55, f), 0.055, 'triangle', 0.09, 50);
+            }, i * 22);
+          }
+        }
+      }
+
+      playEnergyPickup() {
+        this.playTone(523.25, 0.07, 'square', 0.08);
+        setTimeout(() => this.playTone(659.25, 0.07, 'square', 0.08), 55);
+        setTimeout(() => this.playTone(783.99, 0.12, 'square', 0.09), 110);
+      }
+
+      playTreasurePickup() {
+        const notes = [587.33, 783.99, 987.77, 1174.66];
+        notes.forEach((n, idx) => {
+          setTimeout(() => this.playTone(n, 0.08, 'triangle', 0.1), idx * 50);
+        });
+      }
+
+      playStageClear() {
+        this.stopBGM();
+        const melody = [392.00, 523.25, 659.25, 783.99, 659.25, 1046.50];
+        melody.forEach((n, idx) => {
+          setTimeout(() => this.playTone(n, idx === 5 ? 0.28 : 0.09, 'square', 0.09), idx * 85);
+        });
+      }
+
+      playGameOver() {
+        this.stopBGM();
+        const notes = [311.13, 277.18, 233.08, 174.61];
+        notes.forEach((n, idx) => {
+          setTimeout(() => this.playTone(n, 0.18, 'sawtooth', 0.09), idx * 140);
+        });
+      }
+    }
+
+    const audio = new RetroAudio();
+
+    // =========================================================================
+    // 3. GAME STATE & HEIGHTMAP DATA STRUCTURES
+    // =========================================================================
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d', { alpha: false });
+
+    const state = {
+      screen: 'TITLE', // 'TITLE' | 'PLAYING' | 'STAGE_CLEAR' | 'GAME_OVER'
+      stage: 1,
+      score: 0,
+      energy: MAX_ENERGY,
+      tick: 0,
+      shakeTimer: 0,
+      shakeIntensity: 0,
+
+      // Stage clear energy-to-score conversion summary
+      clearSummary: {
+        remainingEnergy: 0,
+        energyBonus: 0,
+        stageBaseScore: 0
+      },
+
+      // Camera Pitch Mode: false = Standard 3D, true = High-Angle Overhead View
+      overheadMode: false,
+      cameraTilt: 0.0, // Smoothly lerps between 0.0 (3D) and 1.0 (Overhead)
+
+      // Heightmap vertices: (GRID_ROWS + 1) x (GRID_COLS + 1)
+      heights: [],
+      // Items on triangles: { gx, gy, tri, type: 'ENERGY' | 'TREASURE', collected: false }
+      items: [],
+      // Floating pixel particles & popups
+      particles: [],
+      popups: [],
+
+      // Player discrete triangle position + smooth visual interpolation
+      player: {
+        gx: 5,
+        gy: 2,
+        tri: 0,
+        facing: { dx: 0, dy: 1 },
+        visX: 5.62,
+        visY: 2.38,
+        visZ: 0.2,
+        moveCooldown: 0,
+        lastSlopeCost: 0
+      },
+
+      // Camera smooth vertical scroll position (in grid row units)
+      camY: 5.4,
+
+      // Charge state for terrain leveling / overcharge excavation
+      charge: {
+        active: false,
+        amount: 0,
+        maxCost: 26
+      }
+    };
+
+    const keys = {};
+
+    // =========================================================================
+    // 4. PROCEDURAL HEIGHTMAP & STAGE GENERATOR
+    // =========================================================================
+    function resetCameraViewTo3D() {
+      state.overheadMode = false;
+      state.cameraTilt = 0.0;
+      updateViewButtonLabels();
+    }
+
+    function generateStage(stageNum) {
+      resetCameraViewTo3D();
+
+      const rows = GRID_ROWS + 1;
+      const cols = GRID_COLS + 1;
+      state.heights = Array.from({ length: rows }, () => new Float32Array(cols));
+      state.items = [];
+      state.particles = [];
+      state.popups = [];
+
+      const difficulty = Math.min(2.2, 0.85 + (stageNum - 1) * 0.22);
+      const seed1 = stageNum * 13.7 + Math.random() * 10;
+      const seed2 = stageNum * 29.3 + Math.random() * 10;
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (r <= 4) {
+            state.heights[r][c] = 0.2;
+            continue;
+          }
+          if (r >= GRID_ROWS - 3) {
+            state.heights[r][c] = 0.4;
+            continue;
+          }
+
+          const nx = c / cols;
+          const ny = r / 6.0;
+          let h =
+            Math.sin(nx * Math.PI * 2.5 + seed1) * 0.9 +
+            Math.cos(ny * 1.4 + seed2) * 0.95 +
+            Math.sin((nx * 4.0 + ny * 1.8) + seed1 * 0.5) * 0.55;
+
+          h = Math.max(0, (h + 1.6) * 0.85 * difficulty);
+
+          if (r % 9 === 0 || r % 9 === 1) {
+            const gapCol = Math.floor((Math.sin(r * 0.7 + seed1) * 0.5 + 0.5) * (cols - 3)) + 1;
+            if (Math.abs(c - gapCol) > 1) {
+              h += 1.3 * difficulty;
+            }
+          }
+
+          state.heights[r][c] = Number(h.toFixed(2));
+        }
+      }
+
+      const startCol = Math.floor(GRID_COLS / 2);
+      const startRow = 2;
+      state.player.gx = startCol;
+      state.player.gy = startRow;
+      state.player.tri = 0;
+      state.player.facing = { dx: 0, dy: 1 };
+      const startCenter = getTriangleGridCenter(startCol, startRow, 0);
+      state.player.visX = startCenter.x;
+      state.player.visY = startCenter.y;
+      state.player.visZ = getSurfaceHeightAt(startCenter.x, startCenter.y);
+      state.player.lastSlopeCost = 0;
+
+      state.camY = startRow + 3.4;
+      state.charge.active = false;
+      state.charge.amount = 0;
+
+      for (let r = 6; r < GRID_ROWS - 5; r += 3) {
+        const eCol = 1 + Math.floor(Math.random() * (GRID_COLS - 2));
+        const eTri = Math.random() < 0.5 ? 0 : 1;
+        state.items.push({
+          gx: eCol,
+          gy: r,
+          tri: eTri,
+          type: 'ENERGY',
+          collected: false
+        });
+
+        if (r % 6 === 0) {
+          let bestCol = 1;
+          let maxH = -1;
+          for (let c = 1; c < GRID_COLS - 1; c++) {
+            if (c === eCol) continue;
+            const h = getTriangleHeight(c, r + 1, 1);
+            if (h > maxH) {
+              maxH = h;
+              bestCol = c;
+            }
+          }
+          state.items.push({
+            gx: bestCol,
+            gy: r + 1,
+            tri: 1,
+            type: 'TREASURE',
+            collected: false
+          });
+        }
+      }
+    }
+
+    // =========================================================================
+    // 5. TRIANGLE GEOMETRY, SLOPE PHYSICS & DUAL-ANGLE PROJECTION HELPERS
+    // =========================================================================
+    function getTriangleVertices(gx, gy, tri) {
+      const h = state.heights;
+      const bl = { x: gx,     y: gy,     z: h[gy][gx] };
+      const br = { x: gx + 1, y: gy,     z: h[gy][gx + 1] };
+      const tl = { x: gx,     y: gy + 1, z: h[gy + 1][gx] };
+      const tr = { x: gx + 1, y: gy + 1, z: h[gy + 1][gx + 1] };
+
+      if (tri === 0) {
+        return [bl, br, tr];
+      } else {
+        return [bl, tr, tl];
+      }
+    }
+
+    function getTriangleGridCenter(gx, gy, tri) {
+      if (tri === 0) {
+        return { x: gx + 0.62, y: gy + 0.38 };
+      } else {
+        return { x: gx + 0.38, y: gy + 0.62 };
+      }
+    }
+
+    function getTriangleHeight(gx, gy, tri) {
+      const verts = getTriangleVertices(gx, gy, tri);
+      return (verts[0].z + verts[1].z + verts[2].z) / 3;
+    }
+
+    function getSurfaceHeightAt(wx, wy) {
+      const gx = Math.max(0, Math.min(GRID_COLS - 1, Math.floor(wx)));
+      const gy = Math.max(0, Math.min(GRID_ROWS - 1, Math.floor(wy)));
+      const fx = wx - gx;
+      const fy = wy - gy;
+      const h = state.heights;
+
+      const zBL = h[gy][gx];
+      const zBR = h[gy][gx + 1];
+      const zTL = h[gy + 1][gx];
+      const zTR = h[gy + 1][gx + 1];
+
+      if (fx >= fy) {
+        return zBL + fx * (zBR - zBL) + fy * (zTR - zBR);
+      } else {
+        return zBL + fy * (zTL - zBL) + fx * (zTR - zTL);
+      }
+    }
+
+    function getTriangleSlopeInfo(gx, gy, tri) {
+      const [v0, v1, v2] = getTriangleVertices(gx, gy, tri);
+      const maxZ = Math.max(v0.z, v1.z, v2.z);
+      const minZ = Math.min(v0.z, v1.z, v2.z);
+      const steepness = maxZ - minZ;
+
+      let cost = 0;
+      if (steepness > SAFE_SLOPE) {
+        const excess = steepness - SAFE_SLOPE;
+        cost = Math.ceil(excess * 11.5);
+      }
+
+      return { steepness, cost, avgZ: (v0.z + v1.z + v2.z) / 3 };
+    }
+
+    function projectPoint(wx, wy, wz) {
+      const b = state.cameraTilt;
+      const relY = wy - state.camY;
+
+      const taper = 0.022 * (1 - b) + 0.008 * b;
+      const depthFactor = Math.max(0.55, 1.0 - relY * taper);
+
+      const centerX = SCREEN_W * 0.5;
+      const baseTileW = 19.5 * (1 - b) + 18.2 * b;
+      const baseTileH = 11.2 * (1 - b) + 15.6 * b;
+      const heightScale = 13.5 * (1 - b) + 5.2 * b;
+      const baseScreenY = SCREEN_H * (0.57 * (1 - b) + 0.54 * b);
+
+      const gridCenterX = GRID_COLS * 0.5;
+      const sx = centerX + (wx - gridCenterX) * baseTileW * depthFactor;
+      const sy = baseScreenY - (relY * baseTileH * depthFactor) - (wz * heightScale * depthFactor);
+
+      return { x: Math.round(sx), y: Math.round(sy), scale: depthFactor };
+    }
+
+    function getTrianglePalette(gx, gy, tri) {
+      if (gy >= GRID_ROWS - 3) {
+        return {
+          fill: (gx + gy + tri) % 2 === 0 ? PAL.CYAN : PAL.LIGHTBLUE,
+          stroke: PAL.WHITE
+        };
+      }
+
+      const [v0, v1, v2] = getTriangleVertices(gx, gy, tri);
+      const { steepness, avgZ } = getTriangleSlopeInfo(gx, gy, tri);
+
+      const ux = v1.x - v0.x, uy = v1.y - v0.y, uz = v1.z - v0.z;
+      const vx = v2.x - v0.x, vy = v2.y - v0.y, vz = v2.z - v0.z;
+      const nx = uy * vz - uz * vy;
+      const ny = uz * vx - ux * vz;
+      const nz = ux * vy - uy * vx;
+      const len = Math.hypot(nx, ny, nz) || 1;
+      const facetBias = tri === 0 ? 0.04 : -0.04;
+      const shade = (-nx * 0.55 - ny * 0.35 + nz * 0.75) / len + facetBias;
+
+      if (steepness <= SAFE_SLOPE) {
+        if (avgZ < -0.3) {
+          return {
+            fill: shade > 0.65 ? PAL.BLUE : PAL.DARKBLUE,
+            stroke: PAL.DARKGRAY
+          };
+        }
+        if (shade > 0.75) return { fill: PAL.LIGHTGREEN, stroke: PAL.GREEN };
+        if (shade > 0.56) return { fill: PAL.GREEN, stroke: PAL.DARKGREEN };
+        return { fill: PAL.DARKGREEN, stroke: PAL.BLACK };
+      }
+
+      if (steepness <= SAFE_SLOPE * 2.15) {
+        if (shade > 0.65) return { fill: PAL.YELLOW, stroke: PAL.ORANGE };
+        return { fill: PAL.ORANGE, stroke: PAL.RED };
+      }
+
+      if (shade > 0.57) return { fill: PAL.RED, stroke: PAL.PURPLE };
+      return { fill: PAL.PURPLE, stroke: PAL.BLACK };
+    }
+
+    // =========================================================================
+    // 6. CAMERA VIEW TOGGLE, MOVEMENT & TWO-STAGE CARVE
+    // =========================================================================
+    function toggleCameraView() {
+      state.overheadMode = !state.overheadMode;
+      audio.init();
+      audio.playViewSwitch(state.overheadMode);
+      updateViewButtonLabels();
+    }
+
+    function updateViewButtonLabels() {
+      const headerBtn = document.getElementById('headerViewBtn');
+      const touchBtn = document.getElementById('touchViewBtn');
+      const touchLabel = document.getElementById('touchViewLabel');
+
+      if (state.overheadMode) {
+        if (headerBtn) headerBtn.textContent = '👁 俯瞰';
+        if (touchLabel) touchLabel.textContent = '俯瞰視点';
+        if (touchBtn) touchBtn.classList.add('overhead-active');
+      } else {
+        if (headerBtn) headerBtn.textContent = '👁 3D';
+        if (touchLabel) touchLabel.textContent = '3D視点';
+        if (touchBtn) touchBtn.classList.remove('overhead-active');
+      }
+    }
+
+    function movePlayer(dx, dy) {
+      if (state.screen !== 'PLAYING') return;
+
+      const p = state.player;
+      p.facing = { dx, dy };
+
+      let nextGx = p.gx;
+      let nextGy = p.gy;
+      let nextTri = p.tri;
+
+      if (dx === 1) {
+        if (p.tri === 1) {
+          nextTri = 0;
+        } else {
+          nextGx += 1;
+          nextTri = 1;
+        }
+      } else if (dx === -1) {
+        if (p.tri === 0) {
+          nextTri = 1;
+        } else {
+          nextGx -= 1;
+          nextTri = 0;
+        }
+      } else if (dy === 1) {
+        if (p.tri === 0) {
+          nextTri = 1;
+        } else {
+          nextGy += 1;
+          nextTri = 0;
+        }
+      } else if (dy === -1) {
+        if (p.tri === 1) {
+          nextTri = 0;
+        } else {
+          nextGy -= 1;
+          nextTri = 1;
+        }
+      }
+
+      if (nextGx < 0 || nextGx >= GRID_COLS || nextGy < 1 || nextGy >= GRID_ROWS - 1) {
+        return;
+      }
+
+      p.gx = nextGx;
+      p.gy = nextGy;
+      p.tri = nextTri;
+
+      const slopeInfo = getTriangleSlopeInfo(p.gx, p.gy, p.tri);
+      p.lastSlopeCost = slopeInfo.cost;
+
+      if (slopeInfo.cost > 0) {
+        state.energy = Math.max(0, state.energy - slopeInfo.cost);
+        spawnPopup(p.visX, p.visY, p.visZ + 0.5, `-${slopeInfo.cost}`, PAL.RED);
+        triggerShake(3, 0.12);
+      } else {
+        if (dy > 0) state.score += 10 * state.stage;
+      }
+
+      audio.playStep(slopeInfo.cost);
+
+      for (const item of state.items) {
+        if (!item.collected && item.gx === p.gx && item.gy === p.gy) {
+          item.collected = true;
+          if (item.type === 'ENERGY') {
+            const heal = 30;
+            state.energy = Math.min(MAX_ENERGY, state.energy + heal);
+            state.score += 50 * state.stage;
+            audio.playEnergyPickup();
+            spawnPopup(p.visX, p.visY, p.visZ + 0.7, `+${heal} EN`, PAL.CYAN);
+            spawnParticles(p.visX, p.visY, p.visZ + 0.3, PAL.CYAN, 10);
+          } else if (item.type === 'TREASURE') {
+            const pts = 300 * state.stage;
+            state.score += pts;
+            audio.playTreasurePickup();
+            spawnPopup(p.visX, p.visY, p.visZ + 0.7, `+${pts}`, PAL.YELLOW);
+            spawnParticles(p.visX, p.visY, p.visZ + 0.3, PAL.YELLOW, 14);
+          }
+        }
+      }
+
+      // Check Goal Plateau (rows GRID_ROWS - 3 .. GRID_ROWS - 1)
+      if (p.gy >= GRID_ROWS - 3) {
+        const remainingEn = Math.max(0, Math.floor(state.energy));
+        const energyBonus = remainingEn * ENERGY_BONUS_RATE;
+        state.clearSummary = {
+          remainingEnergy: remainingEn,
+          energyBonus: energyBonus,
+          stageBaseScore: state.score
+        };
+        state.score += energyBonus;
+        state.energy = 0;
+
+        state.screen = 'STAGE_CLEAR';
+        state.charge.active = false;
+        audio.stopCharge();
+        audio.playStageClear();
+        spawnPopup(p.visX, p.visY, p.visZ + 0.8, `EN BONUS +${energyBonus}`, PAL.CYAN);
+        spawnParticles(p.visX, p.visY, p.visZ + 0.6, PAL.YELLOW, 24);
+        return;
+      }
+
+      if (state.energy <= 0) {
+        state.energy = 0;
+        state.screen = 'GAME_OVER';
+        state.charge.active = false;
+        audio.stopCharge();
+        audio.playGameOver();
+      }
+    }
+
+    function getCarveBlastCenter() {
+      const p = state.player;
+      const pCenter = getTriangleGridCenter(p.gx, p.gy, p.tri);
+      const bx = Math.max(0.5, Math.min(GRID_COLS - 0.5, pCenter.x + p.facing.dx * 1.8));
+      const by = Math.max(1.5, Math.min(GRID_ROWS - 2.5, pCenter.y + p.facing.dy * 1.8));
+      return {
+        x: bx,
+        y: by,
+        gx: Math.max(0, Math.min(GRID_COLS - 1, Math.floor(bx))),
+        gy: Math.max(1, Math.min(GRID_ROWS - 2, Math.floor(by)))
+      };
+    }
+
+    function executeCarve() {
+      if (!state.charge.active || state.screen !== 'PLAYING') return;
+
+      const ratio = Math.max(0.15, state.charge.amount);
+      state.charge.active = false;
+      state.charge.amount = 0;
+
+      const energyCost = Math.max(2, Math.round(ratio * state.charge.maxCost));
+      if (state.energy <= 0) return;
+
+      const actualCost = Math.min(state.energy, energyCost);
+      const effectiveRatio = actualCost / state.charge.maxCost;
+      const isOvercharge = effectiveRatio >= OVERCHARGE_THRESHOLD;
+
+      state.energy = Math.max(0, state.energy - actualCost);
+
+      const p = state.player;
+      const baseH = getTriangleHeight(p.gx, p.gy, p.tri);
+      const blast = getCarveBlastCenter();
+
+      const radius = isOvercharge ? 2.35 : (1.55 + (effectiveRatio / OVERCHARGE_THRESHOLD) * 0.65);
+
+      const minR = Math.max(1, Math.floor(blast.y - radius - 1));
+      const maxR = Math.min(GRID_ROWS - 2, Math.ceil(blast.y + radius + 1));
+      const minC = Math.max(0, Math.floor(blast.x - radius - 1));
+      const maxC = Math.min(GRID_COLS, Math.ceil(blast.x + radius + 1));
+
+      for (let r = minR; r <= maxR; r++) {
+        for (let c = minC; c <= maxC; c++) {
+          if ((r === p.gy || r === p.gy + 1) && (c === p.gx || c === p.gx + 1)) {
+            continue;
+          }
+
+          const dist = Math.hypot(c - blast.x, r - blast.y);
+          if (dist <= radius) {
+            const falloff = Math.cos((dist / radius) * (Math.PI * 0.5));
+            const currH = state.heights[r][c];
+            let newH = currH;
+
+            if (!isOvercharge) {
+              const levelStrength = Math.min(1.0, (effectiveRatio / OVERCHARGE_THRESHOLD) * 1.15) * falloff;
+              newH = currH + (baseH - currH) * levelStrength;
+            } else {
+              const overRatio = (effectiveRatio - OVERCHARGE_THRESHOLD) / (1.0 - OVERCHARGE_THRESHOLD);
+              const craterDepth = 1.05 + overRatio * 1.15;
+              const targetExcavatedH = baseH - craterDepth * falloff;
+              const blendedFlatH = currH + (baseH - currH) * falloff;
+              newH = Math.min(blendedFlatH, targetExcavatedH);
+            }
+
+            state.heights[r][c] = Math.max(-1.4, Number(newH.toFixed(2)));
+          }
+        }
+      }
+
+      audio.playCarve(effectiveRatio, isOvercharge);
+      triggerShake(isOvercharge ? 6 : 2 + effectiveRatio * 3, isOvercharge ? 0.24 : 0.15);
+
+      const bz = getSurfaceHeightAt(blast.x, blast.y);
+      const fxColor = isOvercharge ? PAL.RED : PAL.CYAN;
+      spawnParticles(blast.x, blast.y, bz + 0.2, fxColor, isOvercharge ? 24 : 12);
+      spawnPopup(
+        blast.x,
+        blast.y,
+        bz + 0.55,
+        isOvercharge ? `EXCAVATE! -${actualCost}` : `LEVEL -${actualCost}`,
+        isOvercharge ? PAL.ORANGE : PAL.CYAN
+      );
+
+      p.lastSlopeCost = getTriangleSlopeInfo(p.gx, p.gy, p.tri).cost;
+
+      if (state.energy <= 0) {
+        state.energy = 0;
+        state.screen = 'GAME_OVER';
+        audio.playGameOver();
+      }
+    }
+
+    // =========================================================================
+    // 7. VISUAL EFFECTS (PARTICLES, POPUPS, SCREEN SHAKE)
+    // =========================================================================
+    function spawnParticles(wx, wy, wz, color, count) {
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 0.03 + Math.random() * 0.08;
+        state.particles.push({
+          wx,
+          wy,
+          wz,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          vz: 0.06 + Math.random() * 0.11,
+          life: 18 + Math.floor(Math.random() * 14),
+          color
+        });
+      }
+    }
+
+    function spawnPopup(wx, wy, wz, text, color) {
+      state.popups.push({
+        wx,
+        wy,
+        wz,
+        text,
+        color,
+        life: 32
+      });
+    }
+
+    function triggerShake(intensity, durationSec) {
+      state.shakeIntensity = intensity;
+      state.shakeTimer = Math.round(durationSec * 60);
+    }
+
+    // =========================================================================
+    // 8. UPDATE LOOP
+    // =========================================================================
+    function update() {
+      state.tick++;
+
+      // Advance 4-channel 8-bit chiptune BGM sequencer
+      audio.tickBGM(state.screen === 'PLAYING', state.energy / MAX_ENERGY);
+
+      if (state.shakeTimer > 0) {
+        state.shakeTimer--;
+      }
+
+      const targetBlend = state.overheadMode ? 1.0 : 0.0;
+      state.cameraTilt += (targetBlend - state.cameraTilt) * 0.18;
+
+      const p = state.player;
+      const targetPos = getTriangleGridCenter(p.gx, p.gy, p.tri);
+
+      p.visX += (targetPos.x - p.visX) * 0.28;
+      p.visY += (targetPos.y - p.visY) * 0.28;
+      const exactSurfaceZ = getSurfaceHeightAt(p.visX, p.visY);
+      p.visZ += (exactSurfaceZ - p.visZ) * 0.45;
+
+      const leadOffset = 3.4 * (1 - state.cameraTilt) + 2.6 * state.cameraTilt;
+      const desiredCamY = Math.max(leadOffset, Math.min(GRID_ROWS - 5.5, p.visY + leadOffset));
+      state.camY += (desiredCamY - state.camY) * 0.14;
+
+      if (state.screen === 'PLAYING') {
+        if (p.moveCooldown > 0) {
+          p.moveCooldown--;
+        } else {
+          if (keys['ArrowUp'] || keys['KeyW']) {
+            movePlayer(0, 1);
+            p.moveCooldown = 8;
+          } else if (keys['ArrowDown'] || keys['KeyS']) {
+            movePlayer(0, -1);
+            p.moveCooldown = 8;
+          } else if (keys['ArrowLeft'] || keys['KeyA']) {
+            movePlayer(-1, 0);
+            p.moveCooldown = 8;
+          } else if (keys['ArrowRight'] || keys['KeyD']) {
+            movePlayer(1, 0);
+            p.moveCooldown = 8;
+          }
+        }
+
+        if (state.charge.active) {
+          const maxPossibleRatio = Math.min(1.0, state.energy / state.charge.maxCost);
+          state.charge.amount = Math.min(maxPossibleRatio, state.charge.amount + 0.022);
+          audio.updateCharge(state.charge.amount);
+        }
+      }
+
+      for (let i = state.particles.length - 1; i >= 0; i--) {
+        const pt = state.particles[i];
+        pt.wx += pt.vx;
+        pt.wy += pt.vy;
+        pt.wz += pt.vz;
+        pt.vz -= 0.008;
+        pt.life--;
+        if (pt.life <= 0) state.particles.splice(i, 1);
+      }
+
+      for (let i = state.popups.length - 1; i >= 0; i--) {
+        const pop = state.popups[i];
+        pop.wz += 0.018;
+        pop.life--;
+        if (pop.life <= 0) state.popups.splice(i, 1);
+      }
+    }
+
+    // =========================================================================
+    // 9. TIC-80 PIXEL RENDERER (DEPTH-SORTED PAINTER'S ALGORITHM)
+    // =========================================================================
+    function fillTriangle(p0, p1, p2, fillColor, strokeColor = null) {
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.closePath();
+      ctx.fillStyle = fillColor;
+      ctx.fill();
+
+      if (strokeColor) {
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
+
+    function drawPixelText(text, x, y, color = PAL.WHITE, shadow = PAL.BLACK, align = 'left') {
+      ctx.font = '8px "Press Start 2P", "DotGothic16", monospace';
+      ctx.textAlign = align;
+      ctx.textBaseline = 'top';
+      if (shadow) {
+        ctx.fillStyle = shadow;
+        ctx.fillText(text, Math.round(x) + 1, Math.round(y) + 1);
+      }
+      ctx.fillStyle = color;
+      ctx.fillText(text, Math.round(x), Math.round(y));
+    }
+
+    function render() {
+      ctx.save();
+
+      if (state.shakeTimer > 0) {
+        const sx = Math.round((Math.random() - 0.5) * state.shakeIntensity);
+        const sy = Math.round((Math.random() - 0.5) * state.shakeIntensity);
+        ctx.translate(sx, sy);
+      }
+
+      // 1. Sky / Horizon Backdrop
+      ctx.fillStyle = PAL.BLACK;
+      ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+
+      const skyHeight = Math.round(28 * (1 - state.cameraTilt * 0.65));
+      if (skyHeight > 14) {
+        ctx.fillStyle = PAL.DARKBLUE;
+        ctx.fillRect(0, 0, SCREEN_W, skyHeight);
+        ctx.fillStyle = PAL.PURPLE;
+        ctx.fillRect(0, skyHeight - 6, SCREEN_W, 8);
+
+        for (let i = 0; i < 14; i++) {
+          const starX = (i * 37 + 11) % SCREEN_W;
+          const starY = (i * 19 + 5) % Math.max(15, skyHeight - 4);
+          ctx.fillStyle = (state.tick + i * 7) % 40 < 20 ? PAL.WHITE : PAL.LIGHTGRAY;
+          ctx.fillRect(starX, starY, 1, 1);
+        }
+      }
+
+      // 2. Painter's Algorithm: Render visible terrain rows from FAR (top) to NEAR (bottom)
+      const minVisibleRow = Math.max(0, Math.floor(state.camY - 8));
+      const maxVisibleRow = Math.min(GRID_ROWS - 1, Math.ceil(state.camY + 12));
+
+      const blast = getCarveBlastCenter();
+      const playerRow = Math.floor(state.player.visY);
+      const isOvercharge = state.charge.active && state.charge.amount >= OVERCHARGE_THRESHOLD;
+
+      for (let r = maxVisibleRow; r >= minVisibleRow; r--) {
+        for (const tri of [1, 0]) {
+          for (let c = 0; c < GRID_COLS; c++) {
+            const [v0, v1, v2] = getTriangleVertices(c, r, tri);
+            const p0 = projectPoint(v0.x, v0.y, v0.z);
+            const p1 = projectPoint(v1.x, v1.y, v1.z);
+            const p2 = projectPoint(v2.x, v2.y, v2.z);
+
+            const colors = getTrianglePalette(c, r, tri);
+            fillTriangle(p0, p1, p2, colors.fill, colors.stroke);
+
+            if (state.screen === 'PLAYING' && c === state.player.gx && r === state.player.gy && tri === state.player.tri) {
+              fillTriangle(p0, p1, p2, 'rgba(244, 244, 244, 0.25)', PAL.WHITE);
+            }
+
+            if (state.screen === 'PLAYING' && c === blast.gx && r === blast.gy) {
+              const pulse = Math.sin(state.tick * 0.25) > 0;
+              const reticleCol = state.charge.active
+                ? (isOvercharge ? (pulse ? PAL.RED : PAL.YELLOW) : PAL.CYAN)
+                : (pulse ? PAL.CYAN : PAL.WHITE);
+              ctx.beginPath();
+              ctx.moveTo(p0.x, p0.y);
+              ctx.lineTo(p1.x, p1.y);
+              ctx.lineTo(p2.x, p2.y);
+              ctx.closePath();
+              ctx.strokeStyle = reticleCol;
+              ctx.lineWidth = 1;
+              ctx.stroke();
+            }
+          }
+        }
+
+        if (state.screen === 'PLAYING' && r === blast.gy) {
+          const bz = getSurfaceHeightAt(blast.x, blast.y);
+          const bp = projectPoint(blast.x, blast.y, bz);
+          const reticleCol = state.charge.active
+            ? (isOvercharge ? PAL.RED : PAL.CYAN)
+            : PAL.LIGHTGREEN;
+
+          ctx.fillStyle = reticleCol;
+          ctx.fillRect(bp.x - 2, bp.y, 5, 1);
+          ctx.fillRect(bp.x, bp.y - 2, 1, 5);
+
+          if (state.charge.active) {
+            const rad = Math.round(4 + state.charge.amount * 15);
+            ctx.beginPath();
+            ctx.arc(bp.x, bp.y, rad, 0, Math.PI * 2);
+            ctx.strokeStyle = isOvercharge ? (state.tick % 4 < 2 ? PAL.RED : PAL.YELLOW) : PAL.CYAN;
+            ctx.stroke();
+          }
+        }
+
+        // 3. Draw Collectibles on row r
+        for (const item of state.items) {
+          if (item.collected || item.gy !== r) continue;
+          const ic = getTriangleGridCenter(item.gx, item.gy, item.tri);
+          const iz = getSurfaceHeightAt(ic.x, ic.y);
+          const bob = Math.sin(state.tick * 0.15 + item.gx) * 0.12;
+          const sp = projectPoint(ic.x, ic.y, iz + 0.25 + bob);
+
+          const shadowP = projectPoint(ic.x, ic.y, iz);
+          ctx.fillStyle = PAL.BLACK;
+          ctx.fillRect(shadowP.x - 2, shadowP.y - 1, 4, 2);
+
+          if (item.type === 'ENERGY') {
+            ctx.fillStyle = PAL.CYAN;
+            ctx.beginPath();
+            ctx.moveTo(sp.x, sp.y - 4);
+            ctx.lineTo(sp.x + 3, sp.y);
+            ctx.lineTo(sp.x, sp.y + 4);
+            ctx.lineTo(sp.x - 3, sp.y);
+            ctx.closePath();
+            ctx.fill();
+            ctx.fillStyle = PAL.WHITE;
+            ctx.fillRect(sp.x - 1, sp.y - 2, 1, 2);
+          } else {
+            ctx.fillStyle = PAL.YELLOW;
+            ctx.fillRect(sp.x - 3, sp.y - 3, 6, 5);
+            ctx.fillStyle = PAL.ORANGE;
+            ctx.fillRect(sp.x - 3, sp.y + 1, 6, 2);
+            ctx.fillStyle = PAL.WHITE;
+            ctx.fillRect(sp.x - 2, sp.y - 2, 2, 2);
+          }
+        }
+
+        // 4. Draw Checkered Goal Flag on plateau row (GRID_ROWS - 2)
+        if (r === GRID_ROWS - 2) {
+          const flagCol = Math.floor(GRID_COLS / 2);
+          const fz = getSurfaceHeightAt(flagCol + 0.5, r + 0.5);
+          const fp = projectPoint(flagCol + 0.5, r + 0.5, fz);
+
+          ctx.fillStyle = PAL.WHITE;
+          ctx.fillRect(fp.x, fp.y - 16, 2, 16);
+          const wave = Math.round(Math.sin(state.tick * 0.22));
+          for (let fy = 0; fy < 2; fy++) {
+            for (let fx = 0; fx < 3; fx++) {
+              ctx.fillStyle = (fx + fy) % 2 === 0 ? PAL.YELLOW : PAL.BLACK;
+              ctx.fillRect(fp.x + 2 + fx * 3, fp.y - 16 + fy * 3 + (fx === 2 ? wave : 0), 3, 3);
+            }
+          }
+        }
+
+        // 5. Interleave Player immediately after row r finishes rendering
+        if (playerRow === r) {
+          drawPlayer();
+        }
+      }
+
+      // 6. Draw Particles & Floating Popups
+      for (const pt of state.particles) {
+        const pp = projectPoint(pt.wx, pt.wy, pt.wz);
+        ctx.fillStyle = pt.color;
+        ctx.fillRect(pp.x, pp.y, 2, 2);
+      }
+
+      for (const pop of state.popups) {
+        const pp = projectPoint(pop.wx, pop.wy, pop.wz);
+        drawPixelText(pop.text, pp.x, pp.y, pop.color, PAL.BLACK, 'center');
+      }
+
+      // 7. Crisp TIC-80 HUD Overlay
+      drawHUD();
+
+      // 8. State Overlays
+      if (state.screen === 'TITLE') {
+        drawTitleOverlay();
+      } else if (state.screen === 'STAGE_CLEAR') {
+        drawStageClearOverlay();
+      } else if (state.screen === 'GAME_OVER') {
+        drawGameOverOverlay();
+      }
+
+      ctx.restore();
+    }
+
+    function drawPlayer() {
+      const p = state.player;
+      const groundP = projectPoint(p.visX, p.visY, p.visZ);
+      const hoverBob = Math.sin(state.tick * 0.2) * 1.0;
+      const bodyY = groundP.y - 5 + Math.round(hoverBob);
+
+      ctx.fillStyle = PAL.BLACK;
+      ctx.fillRect(groundP.x - 4, groundP.y - 1, 8, 2);
+
+      ctx.fillStyle = state.tick % 4 < 2 ? PAL.CYAN : PAL.LIGHTBLUE;
+      ctx.fillRect(groundP.x - 2, groundP.y - 3, 4, 2);
+
+      ctx.fillStyle = PAL.WHITE;
+      ctx.fillRect(groundP.x - 4, bodyY - 5, 8, 5);
+      ctx.fillStyle = PAL.BLUE;
+      ctx.fillRect(groundP.x - 4, bodyY - 2, 8, 2);
+
+      ctx.fillStyle = PAL.YELLOW;
+      const vx = groundP.x + p.facing.dx * 2 - 1;
+      const vy = bodyY - 4 - p.facing.dy;
+      ctx.fillRect(vx, vy, 3, 2);
+    }
+
+    function drawHUD() {
+      ctx.fillStyle = PAL.BLACK;
+      ctx.fillRect(0, 0, SCREEN_W, 14);
+      ctx.fillStyle = PAL.DARKGRAY;
+      ctx.fillRect(0, 13, SCREEN_W, 1);
+
+      drawPixelText('EN', 3, 3, PAL.CYAN, null, 'left');
+      const barX = 21;
+      const barY = 3;
+      const barW = 64;
+      const barH = 7;
+
+      ctx.fillStyle = PAL.DARKGRAY;
+      ctx.fillRect(barX, barY, barW, barH);
+
+      const ratio = Math.max(0, state.energy / MAX_ENERGY);
+      const fillW = Math.round((barW - 2) * ratio);
+      const barColor = ratio > 0.5 ? PAL.GREEN : (ratio > 0.25 ? PAL.YELLOW : PAL.RED);
+      ctx.fillStyle = barColor;
+      ctx.fillRect(barX + 1, barY + 1, fillW, barH - 2);
+
+      if (state.charge.active && fillW > 0) {
+        const isOvercharge = state.charge.amount >= OVERCHARGE_THRESHOLD;
+        const previewCost = Math.min(state.energy, Math.max(2, Math.round(state.charge.amount * state.charge.maxCost)));
+        const costW = Math.min(fillW, Math.round((barW - 2) * (previewCost / MAX_ENERGY)));
+        ctx.fillStyle = isOvercharge
+          ? (state.tick % 4 < 2 ? PAL.RED : PAL.YELLOW)
+          : (state.tick % 6 < 3 ? PAL.WHITE : PAL.CYAN);
+        ctx.fillRect(barX + 1 + fillW - costW, barY + 1, costW, barH - 2);
+      }
+
+      drawPixelText(`ST:${state.stage}`, 91, 3, PAL.LIGHTGREEN, null, 'left');
+      drawPixelText(`SC:${String(state.score).padStart(5, '0')}`, 237, 3, PAL.YELLOW, null, 'right');
+
+      if (state.screen === 'PLAYING') {
+        const distPct = Math.min(100, Math.max(0, Math.round(((state.player.gy - 2) / (GRID_ROWS - 5)) * 100)));
+        if (state.charge.active) {
+          const isOver = state.charge.amount >= OVERCHARGE_THRESHOLD;
+          const modeLabel = isOver ? 'MODE:EXCAVATE!' : 'MODE:LEVELING';
+          const modeCol = isOver ? (state.tick % 4 < 2 ? PAL.RED : PAL.YELLOW) : PAL.CYAN;
+          drawPixelText(modeLabel, 4, SCREEN_H - 10, modeCol, PAL.BLACK, 'left');
+        } else {
+          const blast = getCarveBlastCenter();
+          const info = getTriangleSlopeInfo(blast.gx, blast.gy, 0);
+          const label = info.cost === 0 ? 'AHEAD:FLAT(0)' : `AHEAD:-${info.cost}EN`;
+          const col = info.cost === 0 ? PAL.LIGHTGREEN : (info.cost < 8 ? PAL.ORANGE : PAL.RED);
+          drawPixelText(label, 4, SCREEN_H - 10, col, PAL.BLACK, 'left');
+        }
+
+        const viewTag = state.overheadMode ? 'CAM:TOP' : 'CAM:3D';
+        const viewCol = state.overheadMode ? PAL.CYAN : PAL.LIGHTGRAY;
+        drawPixelText(viewTag, 142, SCREEN_H - 10, viewCol, PAL.BLACK, 'center');
+
+        drawPixelText(`GOAL:${distPct}%`, 236, SCREEN_H - 10, PAL.LIGHTGRAY, PAL.BLACK, 'right');
+      }
+    }
+
+    function drawTitleOverlay() {
+      ctx.fillStyle = 'rgba(26, 28, 44, 0.80)';
+      ctx.fillRect(16, 22, SCREEN_W - 32, 94);
+      ctx.strokeStyle = PAL.YELLOW;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(16.5, 22.5, SCREEN_W - 33, 93);
+
+      drawPixelText('TERRA CARVER 80', SCREEN_W / 2, 30, PAL.YELLOW, PAL.BLACK, 'center');
+      drawPixelText('PSEUDO-3D TERRAIN RUN', SCREEN_W / 2, 43, PAL.CYAN, PAL.BLACK, 'center');
+      drawPixelText('CARVE: LEVEL / FULL: CRATER', SCREEN_W / 2, 59, PAL.LIGHTGREEN, PAL.BLACK, 'center');
+      drawPixelText('VIEW [V]: TOGGLE TOP CAMERA', SCREEN_W / 2, 71, PAL.ORANGE, PAL.BLACK, 'center');
+
+      if (state.tick % 40 < 26) {
+        drawPixelText('PRESS SPACE OR TAP TO START', SCREEN_W / 2, 93, PAL.WHITE, PAL.BLACK, 'center');
+      }
+    }
+
+    function drawStageClearOverlay() {
+      ctx.fillStyle = 'rgba(26, 28, 44, 0.88)';
+      ctx.fillRect(14, 21, SCREEN_W - 28, 96);
+      ctx.strokeStyle = PAL.CYAN;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(14.5, 21.5, SCREEN_W - 29, 95);
+
+      const { remainingEnergy, energyBonus, stageBaseScore } = state.clearSummary;
+
+      drawPixelText(`STAGE ${state.stage} CLEAR!`, SCREEN_W / 2, 28, PAL.YELLOW, PAL.BLACK, 'center');
+      drawPixelText(`STAGE SCORE: ${stageBaseScore}`, SCREEN_W / 2, 44, PAL.LIGHTGRAY, PAL.BLACK, 'center');
+      drawPixelText(`EN ${remainingEnergy}x${ENERGY_BONUS_RATE}: +${energyBonus}`, SCREEN_W / 2, 57, PAL.CYAN, PAL.BLACK, 'center');
+      drawPixelText(`TOTAL SCORE: ${state.score}`, SCREEN_W / 2, 72, PAL.WHITE, PAL.BLACK, 'center');
+
+      if (state.tick % 36 < 24) {
+        drawPixelText('PRESS SPACE / TAP NEXT', SCREEN_W / 2, 95, PAL.LIGHTGREEN, PAL.BLACK, 'center');
+      }
+    }
+
+    function drawGameOverOverlay() {
+      ctx.fillStyle = 'rgba(26, 28, 44, 0.86)';
+      ctx.fillRect(24, 30, SCREEN_W - 48, 76);
+      ctx.strokeStyle = PAL.RED;
+      ctx.strokeRect(24.5, 30.5, SCREEN_W - 49, 75);
+
+      drawPixelText('OUT OF ENERGY!', SCREEN_W / 2, 40, PAL.RED, PAL.BLACK, 'center');
+      drawPixelText(`FINAL SCORE: ${state.score}`, SCREEN_W / 2, 58, PAL.YELLOW, PAL.BLACK, 'center');
+      if (state.tick % 36 < 24) {
+        drawPixelText('PRESS SPACE / TAP RETRY', SCREEN_W / 2, 82, PAL.WHITE, PAL.BLACK, 'center');
+      }
+    }
+
+    // =========================================================================
+    // 10. RESPONSIVE VIEWPORT SCALING & INPUT EVENT HANDLERS
+    // =========================================================================
+    function resizeCanvas() {
+      const container = document.getElementById('viewportContainer');
+      const rect = container.getBoundingClientRect();
+      const aspect = SCREEN_W / SCREEN_H;
+
+      let targetW = rect.width;
+      let targetH = targetW / aspect;
+
+      if (targetH > rect.height) {
+        targetH = rect.height;
+        targetW = targetH * aspect;
+      }
+
+      canvas.style.width = `${Math.floor(targetW)}px`;
+      canvas.style.height = `${Math.floor(targetH)}px`;
+    }
+
+    function startNewGame() {
+      audio.init();
+      state.stage = 1;
+      state.score = 0;
+      state.energy = MAX_ENERGY;
+      resetCameraViewTo3D();
+      generateStage(1);
+      state.screen = 'PLAYING';
+      audio.resetBGM();
+      audio.startBGM();
+      audio.playEnergyPickup();
+    }
+
+    function advanceNextStage() {
+      audio.init();
+      state.stage += 1;
+      state.energy = MAX_ENERGY;
+      resetCameraViewTo3D();
+      generateStage(state.stage);
+      state.screen = 'PLAYING';
+      audio.startBGM();
+      audio.playEnergyPickup();
+    }
+
+    function beginChargeAction() {
+      audio.init();
+      if (state.screen === 'TITLE' || state.screen === 'GAME_OVER') {
+        startNewGame();
+        return;
+      }
+      if (state.screen === 'STAGE_CLEAR') {
+        advanceNextStage();
+        return;
+      }
+      if (state.screen === 'PLAYING' && !state.charge.active && state.energy > 0) {
+        state.charge.active = true;
+        state.charge.amount = 0.08;
+        audio.startCharge();
+      }
+    }
+
+    function releaseChargeAction() {
+      if (state.screen === 'PLAYING' && state.charge.active) {
+        executeCarve();
+      }
+    }
+
+    function toggleSound() {
+      audio.init();
+      audio.enabled = !audio.enabled;
+      if (!audio.enabled) {
+        audio.stopCharge();
+      } else if (state.screen === 'PLAYING') {
+        audio.startBGM();
+      }
+      const soundToggleBtn = document.getElementById('soundToggleBtn');
+      if (soundToggleBtn) {
+        soundToggleBtn.textContent = audio.enabled ? '♪ ON' : '♪ OFF';
+      }
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+        e.preventDefault();
+      }
+      if (e.repeat) return;
+
+      keys[e.code] = true;
+
+      if (e.code === 'KeyM') {
+        toggleSound();
+      } else if (e.code === 'KeyV') {
+        toggleCameraView();
+      } else if (e.code === 'Space' || e.code === 'KeyZ') {
+        beginChargeAction();
+      } else if (state.screen === 'PLAYING') {
+        audio.init();
+        if (e.code === 'ArrowUp' || e.code === 'KeyW') { movePlayer(0, 1); state.player.moveCooldown = 11; }
+        if (e.code === 'ArrowDown' || e.code === 'KeyS') { movePlayer(0, -1); state.player.moveCooldown = 11; }
+        if (e.code === 'ArrowLeft' || e.code === 'KeyA') { movePlayer(-1, 0); state.player.moveCooldown = 11; }
+        if (e.code === 'ArrowRight' || e.code === 'KeyD') { movePlayer(1, 0); state.player.moveCooldown = 11; }
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      keys[e.code] = false;
+      if (e.code === 'Space' || e.code === 'KeyZ') {
+        releaseChargeAction();
+      }
+    });
+
+    canvas.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      if (state.screen === 'TITLE' || state.screen === 'GAME_OVER') {
+        startNewGame();
+      } else if (state.screen === 'STAGE_CLEAR') {
+        advanceNextStage();
+      }
+    });
+
+    document.querySelectorAll('[data-dir]').forEach((btn) => {
+      const dir = btn.getAttribute('data-dir');
+      const map = {
+        up:    { code: 'ArrowUp',    dx: 0,  dy: 1 },
+        down:  { code: 'ArrowDown',  dx: 0,  dy: -1 },
+        left:  { code: 'ArrowLeft',  dx: -1, dy: 0 },
+        right: { code: 'ArrowRight', dx: 1,  dy: 0 }
+      }[dir];
+
+      const press = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        audio.init();
+        btn.classList.add('active');
+        keys[map.code] = true;
+        if (state.screen === 'PLAYING') {
+          movePlayer(map.dx, map.dy);
+          state.player.moveCooldown = 11;
+        }
+      };
+
+      const release = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        btn.classList.remove('active');
+        keys[map.code] = false;
+      };
+
+      btn.addEventListener('pointerdown', press);
+      btn.addEventListener('pointerup', release);
+      btn.addEventListener('pointerleave', release);
+      btn.addEventListener('pointercancel', release);
+    });
+
+    // Camera View Toggle Button Handlers (Header & Touch Footer)
+    const handleViewToggle = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleCameraView();
+    };
+    document.getElementById('touchViewBtn').addEventListener('pointerdown', handleViewToggle);
+    document.getElementById('headerViewBtn').addEventListener('pointerdown', handleViewToggle);
+
+    const touchCarveBtn = document.getElementById('touchCarveBtn');
+    touchCarveBtn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      touchCarveBtn.classList.add('active');
+      beginChargeAction();
+    });
+    const endTouchCarve = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      touchCarveBtn.classList.remove('active');
+      releaseChargeAction();
+    };
+    touchCarveBtn.addEventListener('pointerup', endTouchCarve);
+    touchCarveBtn.addEventListener('pointerleave', endTouchCarve);
+    touchCarveBtn.addEventListener('pointercancel', endTouchCarve);
+
+    const soundToggleBtn = document.getElementById('soundToggleBtn');
+    soundToggleBtn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleSound();
+    });
+
+    function gameLoop() {
+      update();
+      render();
+      requestAnimationFrame(gameLoop);
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+
+    window.onload = function () {
+      generateStage(1);
+      updateViewButtonLabels();
+      resizeCanvas();
+      gameLoop();
+    };
+  </script>
+</body>
+</html>
