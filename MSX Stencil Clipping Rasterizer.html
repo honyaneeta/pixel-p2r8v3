@@ -1,0 +1,1299 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MSX 256x192 / TIC-80 3D Stencil Clipping Viewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f111a;
+            color: #f4f4f4;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        canvas.pixelated {
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        .crt-overlay {
+            background: linear-gradient(
+                rgba(18, 16, 16, 0) 50%, 
+                rgba(0, 0, 0, 0.25) 50%
+            );
+            background-size: 100% 4px;
+            pointer-events: none;
+        }
+        #viewport-container,
+        #screen {
+            touch-action: none;
+        }
+        input[type="range"] {
+            accent-color: #73eff7;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-2 sm:p-5">
+
+    <!-- メインコンテナ -->
+    <div class="w-full max-w-5xl bg-[#1a1c2c] border-2 border-[#333c57] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+        
+        <!-- ヘッダーバー -->
+        <header class="bg-[#29366f] px-4 py-2.5 border-b-2 border-[#333c57] flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2.5">
+                <div class="w-3 h-3 rounded-full bg-[#b13e53]"></div>
+                <div class="w-3 h-3 rounded-full bg-[#ffcd75]"></div>
+                <div class="w-3 h-3 rounded-full bg-[#38b764]"></div>
+                <h1 class="text-xs sm:text-sm font-bold tracking-wider text-[#f4f4f4] mono ml-1">
+                    MSX<span class="text-[#73eff7]">256x192</span> // TIC-80 <span class="text-[#ffcd75]">STENCIL CLIPPING</span>
+                </h1>
+            </div>
+            <div class="flex items-center gap-2 text-[11px] mono text-[#94b0c2]">
+                <span class="bg-[#1a1c2c] px-2 py-0.5 rounded border border-[#333c57]">
+                    FPS: <strong id="stat-fps" class="text-[#a7f070]">60</strong>
+                </span>
+                <span class="bg-[#1a1c2c] px-2 py-0.5 rounded border border-[#333c57]">
+                    Z+STENCIL: <strong class="text-[#73eff7]">32b+8b</strong>
+                </span>
+            </div>
+        </header>
+
+        <!-- メインコンテンツエリア -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-0">
+            
+            <!-- 左側：256x192 ソフトウェアレンダリング ビューポート -->
+            <div class="lg:col-span-7 bg-[#12131f] p-3 sm:p-5 flex flex-col items-center justify-center border-b-2 lg:border-b-0 lg:border-r-2 border-[#333c57]">
+                
+                <!-- 4:3 アスペクト比フレーム -->
+                <div class="relative w-full max-w-[512px] aspect-[4/3] bg-[#1a1c2c] rounded-xl border-4 border-[#333c57] shadow-[0_0_30px_rgba(0,0,0,0.65)] overflow-hidden cursor-grab active:cursor-grabbing" id="viewport-container">
+                    <canvas id="screen" width="256" height="192" class="w-full h-full block pixelated"></canvas>
+                    <div id="crt-effect" class="crt-overlay absolute inset-0 hidden"></div>
+                    
+                    <!-- ステータスバッジ -->
+                    <div class="absolute top-2 left-2 flex flex-wrap gap-1.5 pointer-events-none">
+                        <span id="badge-mode" class="bg-[#1a1c2c]/85 text-[#a7f070] text-[10px] mono px-2 py-0.5 rounded border border-[#38b764]/50">
+                            MODE: LIT + CAP
+                        </span>
+                        <span id="badge-stencil" class="bg-[#1a1c2c]/85 text-[#ffcd75] text-[10px] mono px-2 py-0.5 rounded border border-[#ffcd75]/40">
+                            CLIP: ON
+                        </span>
+                    </div>
+
+                    <div class="absolute bottom-2 left-2 bg-[#1a1c2c]/80 text-[#94b0c2] text-[10px] mono px-2 py-0.5 rounded border border-[#566c86]/50 pointer-events-none">
+                        1-FINGER ROTATE / 2-FINGER PINCH
+                    </div>
+                </div>
+
+                <!-- ビューモード切替バー -->
+                <div class="grid grid-cols-3 gap-1.5 mt-3 w-full max-w-[512px]">
+                    <button data-view="normal" class="view-btn py-1.5 px-2 bg-[#3b5dc9] text-[#f4f4f4] text-[11px] mono font-bold rounded-lg border border-[#73eff7]/60 transition">
+                        1. NORMAL + CAP
+                    </button>
+                    <button data-view="stencil" class="view-btn py-1.5 px-2 bg-[#25283d] hover:bg-[#333c57] text-[#94b0c2] text-[11px] mono font-bold rounded-lg border border-[#333c57] transition">
+                        2. STENCIL MASK
+                    </button>
+                    <button data-view="zbuffer" class="view-btn py-1.5 px-2 bg-[#25283d] hover:bg-[#333c57] text-[#94b0c2] text-[11px] mono font-bold rounded-lg border border-[#333c57] transition">
+                        3. Z-BUFFER
+                    </button>
+                </div>
+
+                <!-- クイックアクションボタン -->
+                <div class="flex flex-wrap items-center justify-center gap-2 mt-2.5 w-full max-w-[512px]">
+                    <button id="btn-reset" class="px-3 py-1.5 bg-[#333c57] hover:bg-[#566c86] active:scale-95 text-[11px] mono font-semibold rounded-lg transition text-[#f4f4f4]">
+                        RESET CAM
+                    </button>
+                    <button id="btn-pose" class="px-3 py-1.5 bg-[#333c57] hover:bg-[#566c86] active:scale-95 text-[11px] mono font-semibold rounded-lg transition text-[#f4f4f4]">
+                        POSE: IDLE
+                    </button>
+                    <button id="btn-autorotate" class="px-3 py-1.5 bg-[#38b764] active:scale-95 text-[11px] mono font-semibold rounded-lg transition text-[#1a1c2c]">
+                        AUTO ROT: ON
+                    </button>
+                </div>
+            </div>
+
+            <!-- 右側：クリッピング面 & ステンシルキャップ設定パネル -->
+            <div class="lg:col-span-5 bg-[#1a1c2c] p-3.5 sm:p-4 flex flex-col justify-between gap-3.5">
+                
+                <!-- 1. クリッピング平面コントロール -->
+                <div class="bg-[#25283d] p-3 rounded-xl border border-[#333c57] space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-xs font-bold uppercase tracking-wider text-[#73eff7] mono flex items-center gap-2">
+                            <span class="w-2 h-2 bg-[#73eff7] rounded-full"></span>
+                            CLIPPING & STENCIL CAP
+                        </h2>
+                        <label class="flex items-center gap-1.5 cursor-pointer text-xs mono font-bold text-[#f4f4f4]">
+                            <input type="checkbox" id="opt-clip-enable" checked class="w-4 h-4 accent-[#38b764] rounded">
+                            <span>ACTIVE</span>
+                        </label>
+                    </div>
+
+                    <!-- カット軸（平面タイプ）選択 -->
+                    <div>
+                        <span class="text-[11px] text-[#94b0c2] block mb-1.5 font-medium">クリッピング平面 (Cut Plane Axis)</span>
+                        <div class="grid grid-cols-4 gap-1.5">
+                            <button data-axis="y" class="axis-btn py-1.5 bg-[#3b5dc9] text-[#f4f4f4] text-[11px] mono font-bold rounded-lg border border-[#73eff7]/50 transition">
+                                Y (水平)
+                            </button>
+                            <button data-axis="x" class="axis-btn py-1.5 bg-[#1a1c2c] hover:bg-[#333c57] text-[#94b0c2] text-[11px] mono font-bold rounded-lg border border-[#333c57] transition">
+                                X (左右)
+                            </button>
+                            <button data-axis="z" class="axis-btn py-1.5 bg-[#1a1c2c] hover:bg-[#333c57] text-[#94b0c2] text-[11px] mono font-bold rounded-lg border border-[#333c57] transition">
+                                Z (前後)
+                            </button>
+                            <button data-axis="diag" class="axis-btn py-1.5 bg-[#1a1c2c] hover:bg-[#333c57] text-[#94b0c2] text-[11px] mono font-bold rounded-lg border border-[#333c57] transition">
+                                斜め切
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- スライス位置スライダー -->
+                    <div>
+                        <div class="flex justify-between text-[11px] mono mb-1">
+                            <span class="text-[#94b0c2]">スライス位置 (Plane Offset)</span>
+                            <span id="val-offset" class="text-[#ffcd75] font-bold">+0.85</span>
+                        </div>
+                        <input type="range" id="slider-offset" min="-1.0" max="2.3" step="0.02" value="0.85" class="w-full h-2 bg-[#1a1c2c] rounded-lg cursor-pointer">
+                    </div>
+
+                    <!-- 反転 & 補助グリッド表示 -->
+                    <div class="grid grid-cols-2 gap-2 pt-0.5">
+                        <button id="btn-flip-plane" class="py-1.5 px-2.5 bg-[#1a1c2c] hover:bg-[#333c57] active:scale-95 text-[11px] mono font-semibold rounded-lg border border-[#566c86]/60 text-[#f4f4f4] transition">
+                            ⇄ カット方向反転
+                        </button>
+                        <label class="flex items-center justify-center gap-1.5 py-1.5 px-2 bg-[#1a1c2c] rounded-lg border border-[#333c57] cursor-pointer text-[11px] mono text-[#f4f4f4]">
+                            <input type="checkbox" id="opt-plane-grid" checked class="w-3.5 h-3.5 accent-[#73eff7]">
+                            <span>平面枠表示</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 2. 切断面（ステンシルキャップ）塗りつぶしカラー選択 -->
+                <div class="bg-[#25283d] p-3 rounded-xl border border-[#333c57]">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-bold text-[#ffcd75] mono flex items-center gap-1.5">
+                            <span class="w-2 h-2 bg-[#ffcd75] rounded-full"></span>
+                            CAP FILL COLOR (断面色)
+                        </span>
+                        <span id="val-cap-color" class="text-[10px] mono px-2 py-0.5 rounded bg-[#1a1c2c] text-[#f4f4f4] border border-[#333c57]">
+                            #3: #EF7D57
+                        </span>
+                    </div>
+                    <!-- TIC-80 16色スウォッチ（クリックで断面色を変更） -->
+                    <div id="palette-grid" class="grid grid-cols-8 gap-1.5 p-2 bg-[#12131f] rounded-lg border border-[#333c57]">
+                        <!-- JSで生成 -->
+                    </div>
+                    <div class="mt-2 flex items-center justify-between text-[11px] text-[#94b0c2]">
+                        <label class="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" id="opt-cap-grid" checked class="w-3.5 h-3.5 accent-[#ffcd75]">
+                            <span>断面に方眼グリッド模様を入れる</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 3. レンダリング品質オプション -->
+                <div class="grid grid-cols-2 gap-2">
+                    <label class="flex items-center justify-between p-2 rounded-xl bg-[#25283d] border border-[#333c57] cursor-pointer text-xs">
+                        <span class="text-[#f4f4f4] font-medium">4x4 Bayerディザ</span>
+                        <input type="checkbox" id="opt-dither" checked class="w-4 h-4 accent-[#38b764]">
+                    </label>
+                    <label class="flex items-center justify-between p-2 rounded-xl bg-[#25283d] border border-[#333c57] cursor-pointer text-xs">
+                        <span class="text-[#f4f4f4] font-medium">CRT走査線</span>
+                        <input type="checkbox" id="opt-crt" class="w-4 h-4 accent-[#ffcd75]">
+                    </label>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+<script>
+/**
+ * ============================================================================
+ * 1. MSX 解像度 & TIC-80 Sweetie-16 16色パレット定義
+ * ============================================================================
+ */
+const WIDTH = 256;   // MSX 画面横幅
+const HEIGHT = 192;  // MSX 画面高さ
+const NUM_PIXELS = WIDTH * HEIGHT;
+
+// TIC-80 標準 16色パレット (Sweetie-16)
+const TIC80_HEX = [
+    "#1a1c2c", // 0: Black / Deep Navy
+    "#5d275d", // 1: Dark Purple
+    "#b13e53", // 2: Dark Red
+    "#ef7d57", // 3: Orange / Salmon
+    "#ffcd75", // 4: Yellow / Gold
+    "#a7f070", // 5: Light Green
+    "#38b764", // 6: Green
+    "#257179", // 7: Dark Teal
+    "#29366f", // 8: Dark Blue
+    "#3b5dc9", // 9: Blue
+    "#41a6f6", // 10: Light Blue
+    "#73eff7", // 11: Cyan
+    "#f4f4f4", // 12: White
+    "#94b0c2", // 13: Light Grey
+    "#566c86", // 14: Grey
+    "#333c57"  // 15: Dark Grey
+];
+
+const PALETTE_U32 = new Uint32Array(16);
+const PALETTE_RGB = [];
+
+TIC80_HEX.forEach((hex, i) => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    PALETTE_RGB.push({ r, g, b, hex });
+    // ImageData Uint32Array (リトルエンディアン: 0xAABBGGRR)
+    PALETTE_U32[i] = (255 << 24) | (b << 16) | (g << 8) | r;
+});
+
+// 4x4 Bayer ディザリング行列
+const BAYER_4X4 = [
+     0,  8,  2, 10,
+    12,  4, 14,  6,
+     3, 11,  1,  9,
+    15,  7, 13,  5
+];
+
+/**
+ * ============================================================================
+ * 2. フレームバッファ・Zバッファ・ステンシルバッファの確保
+ * ============================================================================
+ */
+const canvas = document.getElementById('screen');
+const ctx = canvas.getContext('2d', { alpha: false });
+const imgData = ctx.createImageData(WIDTH, HEIGHT);
+
+const pixelBuffer   = new Uint32Array(imgData.data.buffer); // 256x192 カラーバッファ
+const zBuffer       = new Float32Array(NUM_PIXELS);         // 256x192 深度バッファ (32-bit Float)
+const stencilBuffer = new Uint8Array(NUM_PIXELS);           // 256x192 ステンシルバッファ (8-bit Uint)
+
+/**
+ * ============================================================================
+ * 3. 閉じた多様体（Watertight）ローポリ3Dマリオモデルの構築
+ * ============================================================================
+ * ※ステンシルバッファで表裏カウント（Surface +1 / Backface -1）を正確に行うため、
+ *   すべてのパーツを閉じた六面体（12三角形）で構成しています。
+ */
+const MATERIALS = {
+    RED:      { ramp: [1, 2, 2, 3],      inner: 1 }, // 赤い帽子・シャツ（裏面は暗紫）
+    BLUE:     { ramp: [0, 8, 9, 10],     inner: 0 }, // 青いオーバーオール
+    SKIN:     { ramp: [1, 2, 3, 4],      inner: 1 }, // 顔・鼻の肌色
+    HAIR:     { ramp: [0, 1, 2, 3],      inner: 0 }, // 髪・ヒゲ
+    SHOE:     { ramp: [0, 1, 2, 3],      inner: 0 }, // 茶色い靴
+    GLOVE:    { ramp: [14, 13, 12, 12],  inner: 15 },// 白い手袋
+    BUTTON:   { ramp: [3, 4, 4, 12],     inner: 3 }, // 黄色ボタン
+    EYE:      { ramp: [0, 0, 8, 11],     inner: 0 }, // 目
+    EMBLEM:   { ramp: [13, 12, 12, 12],  inner: 14 } // 帽子バッジ
+};
+
+let baseVertices = [];
+let triangles = [];
+
+function addBox(cx, cy, cz, sx, sy, sz, matKey, partTag = 'body') {
+    const hx = sx * 0.5, hy = sy * 0.5, hz = sz * 0.5;
+    const baseIdx = baseVertices.length;
+
+    baseVertices.push(
+        { x: cx - hx, y: cy - hy, z: cz - hz, part: partTag },
+        { x: cx + hx, y: cy - hy, z: cz - hz, part: partTag },
+        { x: cx + hx, y: cy + hy, z: cz - hz, part: partTag },
+        { x: cx - hx, y: cy + hy, z: cz - hz, part: partTag },
+        { x: cx - hx, y: cy - hy, z: cz + hz, part: partTag },
+        { x: cx + hx, y: cy - hy, z: cz + hz, part: partTag },
+        { x: cx + hx, y: cy + hy, z: cz + hz, part: partTag },
+        { x: cx - hx, y: cy + hy, z: cz + hz, part: partTag }
+    );
+
+    const faces = [
+        [4, 5, 6], [4, 6, 7], // +Z
+        [1, 0, 3], [1, 3, 2], // -Z
+        [5, 1, 2], [5, 2, 6], // +X
+        [0, 4, 7], [0, 7, 3], // -X
+        [7, 6, 2], [7, 2, 3], // +Y
+        [0, 1, 5], [0, 5, 4]  // -Y
+    ];
+
+    for (const [a, b, c] of faces) {
+        triangles.push({
+            i0: baseIdx + a,
+            i1: baseIdx + b,
+            i2: baseIdx + c,
+            mat: MATERIALS[matKey]
+        });
+    }
+}
+
+function addTaperedBox(cx, cy, cz, topW, botW, h, topD, botD, matKey, partTag = 'body') {
+    const hy = h * 0.5;
+    const htw = topW * 0.5, hbw = botW * 0.5;
+    const htd = topD * 0.5, hbd = botD * 0.5;
+    const baseIdx = baseVertices.length;
+
+    baseVertices.push(
+        { x: cx - hbw, y: cy - hy, z: cz - hbd, part: partTag },
+        { x: cx + hbw, y: cy - hy, z: cz - hbd, part: partTag },
+        { x: cx + htw, y: cy + hy, z: cz - htd, part: partTag },
+        { x: cx - htw, y: cy + hy, z: cz - htd, part: partTag },
+        { x: cx - hbw, y: cy - hy, z: cz + hbd, part: partTag },
+        { x: cx + hbw, y: cy - hy, z: cz + hbd, part: partTag },
+        { x: cx + htw, y: cy + hy, z: cz + htd, part: partTag },
+        { x: cx - htw, y: cy + hy, z: cz + htd, part: partTag }
+    );
+
+    const faces = [
+        [4, 5, 6], [4, 6, 7],
+        [1, 0, 3], [1, 3, 2],
+        [5, 1, 2], [5, 2, 6],
+        [0, 4, 7], [0, 7, 3],
+        [7, 6, 2], [7, 2, 3],
+        [0, 1, 5], [0, 5, 4]
+    ];
+
+    for (const [a, b, c] of faces) {
+        triangles.push({
+            i0: baseIdx + a,
+            i1: baseIdx + b,
+            i2: baseIdx + c,
+            mat: MATERIALS[matKey]
+        });
+    }
+}
+
+function buildMarioModel() {
+    baseVertices = [];
+    triangles = [];
+
+    // 1. 頭部・顔パーツ
+    addBox(0, 1.35, 0.02, 0.88, 0.78, 0.84, 'SKIN', 'head');
+    addBox(0, 1.28, 0.56, 0.28, 0.24, 0.28, 'SKIN', 'head'); // 鼻
+    addBox(0, 1.11, 0.49, 0.56, 0.13, 0.16, 'HAIR', 'head'); // 口ヒゲ
+    addBox(0, 1.15, 0.47, 0.42, 0.08, 0.14, 'HAIR', 'head');
+    addBox(-0.20, 1.44, 0.45, 0.11, 0.20, 0.06, 'EYE', 'head');
+    addBox( 0.20, 1.44, 0.45, 0.11, 0.20, 0.06, 'EYE', 'head');
+    addBox(-0.21, 1.58, 0.45, 0.15, 0.06, 0.06, 'HAIR', 'head');
+    addBox( 0.21, 1.58, 0.45, 0.15, 0.06, 0.06, 'HAIR', 'head');
+    addBox(-0.46, 1.36, -0.05, 0.10, 0.36, 0.34, 'HAIR', 'head'); // もみあげ
+    addBox( 0.46, 1.36, -0.05, 0.10, 0.36, 0.34, 'HAIR', 'head');
+    addBox(0,     1.34, -0.43, 0.86, 0.62, 0.14, 'HAIR', 'head'); // 後ろ髪
+    addBox(-0.48, 1.32, 0.02, 0.12, 0.24, 0.20, 'SKIN', 'head');  // 耳
+    addBox( 0.48, 1.32, 0.02, 0.12, 0.24, 0.20, 'SKIN', 'head');
+
+    // 2. 赤い帽子
+    addTaperedBox(0, 1.88, -0.02, 0.86, 0.96, 0.34, 0.84, 0.94, 'RED', 'head');
+    addBox(0, 2.08, -0.02, 0.64, 0.12, 0.64, 'RED', 'head');
+    addTaperedBox(0, 1.71, 0.46, 0.78, 0.88, 0.09, 0.46, 0.54, 'RED', 'head'); // ツバ
+    addBox(0, 1.88, 0.46, 0.24, 0.22, 0.08, 'EMBLEM', 'head'); // バッジ
+
+    // 3. 胴体・オーバーオール
+    addTaperedBox(0, 0.55, 0, 0.86, 0.96, 0.76, 0.64, 0.74, 'RED', 'torso');
+    addTaperedBox(0, 0.42, 0.02, 0.90, 1.02, 0.56, 0.70, 0.80, 'BLUE', 'torso');
+    addBox(0, 0.72, 0.34, 0.56, 0.32, 0.12, 'BLUE', 'torso');
+    addBox(-0.24, 0.82, 0.0, 0.14, 0.26, 0.68, 'BLUE', 'torso');
+    addBox( 0.24, 0.82, 0.0, 0.14, 0.26, 0.68, 'BLUE', 'torso');
+    addBox(-0.22, 0.72, 0.41, 0.12, 0.12, 0.06, 'BUTTON', 'torso');
+    addBox( 0.22, 0.72, 0.41, 0.12, 0.12, 0.06, 'BUTTON', 'torso');
+
+    // 4. 腕・白い手袋
+    addBox(-0.66, 0.62, 0.0, 0.38, 0.52, 0.36, 'RED', 'leftArm');
+    addBox(-0.68, 0.26, 0.04, 0.36, 0.32, 0.38, 'GLOVE', 'leftArm');
+    addBox( 0.66, 0.62, 0.0, 0.38, 0.52, 0.36, 'RED', 'rightArm');
+    addBox( 0.68, 0.26, 0.04, 0.36, 0.32, 0.38, 'GLOVE', 'rightArm');
+
+    // 5. 脚・茶色い靴
+    addBox(-0.27, -0.14, 0.0, 0.40, 0.58, 0.44, 'BLUE', 'leftLeg');
+    addTaperedBox(-0.27, -0.54, 0.12, 0.42, 0.46, 0.26, 0.64, 0.72, 'SHOE', 'leftLeg');
+    addBox( 0.27, -0.14, 0.0, 0.40, 0.58, 0.44, 'BLUE', 'rightLeg');
+    addTaperedBox( 0.27, -0.54, 0.12, 0.42, 0.46, 0.26, 0.64, 0.72, 'SHOE', 'rightLeg');
+}
+
+buildMarioModel();
+
+/**
+ * ============================================================================
+ * 4. レンダリング状態 & クリッピング平面定義
+ * ============================================================================
+ */
+let rotY = 0.55;
+let rotX = 0.25;
+let camDist = 4.3;
+let autoRotate = true;
+let useDither = true;
+let jumpPose = false;
+let viewMode = 'normal'; // 'normal' | 'stencil' | 'zbuffer'
+
+// クリッピング面設定（モデルローカル空間での平面方程式: dot(N, P) - offset <= 0 を残す）
+let clipEnabled = true;
+let clipAxis = 'y';      // 'y' | 'x' | 'z' | 'diag'
+let clipOffset = 0.85;   // スライス位置
+let clipFlip = false;    // 法線反転フラグ
+let showPlaneGrid = true;
+let capColorIdx = 3;     // デフォルト切断面カラー (#ef7d57 オレンジ)
+let capPatternGrid = true;
+
+// パレットUI生成（断面カラー選択用）
+const paletteGrid = document.getElementById('palette-grid');
+const valCapColor = document.getElementById('val-cap-color');
+const swatchElements = [];
+
+function updateCapColorUI(idx) {
+    capColorIdx = idx;
+    valCapColor.textContent = `#${idx.toString(16).toUpperCase()}: ${TIC80_HEX[idx].toUpperCase()}`;
+    valCapColor.style.borderColor = TIC80_HEX[idx];
+    swatchElements.forEach((el, i) => {
+        if (i === idx) {
+            el.classList.add('ring-2', 'ring-white', 'scale-110', 'z-10');
+        } else {
+            el.classList.remove('ring-2', 'ring-white', 'scale-110', 'z-10');
+        }
+    });
+}
+
+PALETTE_RGB.forEach((col, idx) => {
+    const swatch = document.createElement('button');
+    swatch.type = 'button';
+    swatch.className = 'aspect-square rounded border border-white/15 flex items-center justify-center text-[9px] mono font-bold shadow-sm transition-transform hover:scale-110 cursor-pointer';
+    swatch.style.backgroundColor = col.hex;
+    swatch.style.color = (col.r * 0.299 + col.g * 0.587 + col.b * 0.114) > 140 ? '#1a1c2c' : '#f4f4f4';
+    swatch.textContent = idx.toString(16).toUpperCase();
+    swatch.addEventListener('click', () => updateCapColorUI(idx));
+    paletteGrid.appendChild(swatch);
+    swatchElements.push(swatch);
+});
+updateCapColorUI(capColorIdx);
+
+/**
+ * 現在のクリッピング平面の単位法線ベクトル N と接線基底 (U, V) を取得
+ */
+function getClippingPlaneBasis() {
+    let nx = 0, ny = 1, nz = 0;
+    if (clipAxis === 'x') {
+        nx = 1; ny = 0; nz = 0;
+    } else if (clipAxis === 'z') {
+        nx = 0; ny = 0; nz = 1;
+    } else if (clipAxis === 'diag') {
+        // 斜め45度カット平面
+        const inv = 1 / Math.hypot(1, 1, 0.35);
+        nx = 1 * inv; ny = 1 * inv; nz = 0.35 * inv;
+    }
+
+    if (clipFlip) {
+        nx = -nx; ny = -ny; nz = -nz;
+    }
+
+    // 平面上の直交基底 U, V を外積から生成（キャップクワッドとグリッド描画用）
+    let upX = 0, upY = 1, upZ = 0;
+    if (Math.abs(ny) > 0.9) {
+        upX = 0; upY = 0; upZ = 1;
+    }
+    // U = normalize(up x N)
+    let ux = upY * nz - upZ * ny;
+    let uy = upZ * nx - upX * nz;
+    let uz = upX * ny - upY * nx;
+    const uLen = Math.hypot(ux, uy, uz) || 1;
+    ux /= uLen; uy /= uLen; uz /= uLen;
+
+    // V = N x U
+    const vx = ny * uz - nz * uy;
+    const vy = nz * ux - nx * uz;
+    const vz = nx * uy - ny * ux;
+
+    // 平面の中心点 C = N * (clipFlip ? -clipOffset : clipOffset)
+    // ※符号に関わらず「空間上のスライス位置」が直感的に動くよう offset を扱う
+    const signedOffset = clipFlip ? -clipOffset : clipOffset;
+    const cx = nx * signedOffset;
+    const cy = ny * signedOffset;
+    const cz = nz * signedOffset;
+
+    return {
+        nx, ny, nz,
+        offset: signedOffset,
+        cx, cy, cz,
+        ux, uy, uz,
+        vx, vy, vz
+    };
+}
+
+/**
+ * ポーズ変形後のローカル頂点座標を取得
+ */
+function getPosedVertex(v) {
+    let x = v.x, y = v.y, z = v.z;
+    if (jumpPose) {
+        if (v.part === 'rightArm') {
+            const py = y - 0.82, px = x - 0.55;
+            y = 0.82 - py + 0.15;
+            x = 0.55 + px * 0.9;
+            z += 0.12;
+        } else if (v.part === 'leftArm') {
+            z -= (y - 0.80) * -0.45;
+        } else if (v.part === 'leftLeg') {
+            z += -(y - 0.15) * 0.55;
+            y += 0.16;
+        } else if (v.part === 'rightLeg') {
+            z -= -(y - 0.15) * 0.35;
+        }
+        y += 0.12;
+    }
+    return { x, y, z };
+}
+
+/**
+ * ============================================================================
+ * 5. Sutherland-Hodgman 3D ポリゴンクリッピング
+ * ============================================================================
+ * 平面方程式 d(P) = dot(N, P) - offset <= 0 の領域（内側）を残して多角形を切断
+ */
+function clipPolygonAgainstPlane(polyVerts, plane) {
+    const out = [];
+    const count = polyVerts.length;
+    if (count < 3) return out;
+
+    for (let i = 0; i < count; i++) {
+        const curr = polyVerts[i];
+        const next = polyVerts[(i + 1) % count];
+
+        // 符号付き距離（<= 0 なら保持領域、> 0 ならカット領域）
+        const dCurr = (curr.x * plane.nx + curr.y * plane.ny + curr.z * plane.nz) - plane.offset;
+        const dNext = (next.x * plane.nx + next.y * plane.ny + next.z * plane.nz) - plane.offset;
+
+        const currInside = dCurr <= 0;
+        const nextInside = dNext <= 0;
+
+        if (currInside && nextInside) {
+            // 両方内側 -> 終点を追加
+            out.push(next);
+        } else if (currInside && !nextInside) {
+            // 内側 -> 外側へ出る -> 交点を追加
+            const t = dCurr / (dCurr - dNext);
+            out.push({
+                x: curr.x + (next.x - curr.x) * t,
+                y: curr.y + (next.y - curr.y) * t,
+                z: curr.z + (next.z - curr.z) * t
+            });
+        } else if (!currInside && nextInside) {
+            // 外側 -> 内側へ入る -> 交点と終点を追加
+            const t = dCurr / (dCurr - dNext);
+            out.push({
+                x: curr.x + (next.x - curr.x) * t,
+                y: curr.y + (next.y - curr.y) * t,
+                z: curr.z + (next.z - curr.z) * t
+            });
+            out.push(next);
+        }
+    }
+    return out;
+}
+
+/**
+ * ============================================================================
+ * 6. スキャンラインラスタライザ（ステンシル操作・バウンディングボックスクランプ付）
+ * ============================================================================
+ */
+function clearBuffers() {
+    const bgTop = PALETTE_U32[0];     // #1a1c2c
+    const bgHorizon = PALETTE_U32[15]; // #333c57
+    const bgFloor = PALETTE_U32[8];    // #29366f
+
+    for (let y = 0; y < HEIGHT; y++) {
+        const rowOffset = y * WIDTH;
+        let col = bgTop;
+        if (y > 142) {
+            col = (y % 8 === 0) ? bgHorizon : bgFloor;
+        } else if (y === 142) {
+            col = PALETTE_U32[14];
+        }
+        pixelBuffer.fill(col, rowOffset, rowOffset + WIDTH);
+    }
+
+    zBuffer.fill(10000.0);
+    stencilBuffer.fill(0);
+}
+
+/**
+ * 3D空間点 -> スクリーン投影ヘルパー
+ */
+function projectPoint(lx, ly, lz, cosY, sinY, cosX, sinX, fov, halfW, halfH) {
+    // モデルY軸回転
+    const x1 = lx * cosY - lz * sinY;
+    const z1 = lx * sinY + lz * cosY;
+    // モデルX軸回転
+    const y2 = ly * cosX - z1 * sinX;
+    const z2 = ly * sinX + z1 * cosX;
+
+    const camZ = camDist - z2;
+    const invZ = fov / Math.max(0.15, camZ);
+
+    return {
+        lx, ly, lz,
+        vx: x1, vy: y2, vz: z2,
+        z: camZ,
+        sx: halfW + x1 * invZ,
+        sy: halfH - y2 * invZ
+    };
+}
+
+/**
+ * Pass 1 用ラスタライザ：ジオメトリ描画 + Zテスト + ステンシル表裏インクリメント/デクリメント
+ * @param {boolean} isFrontFace - trueなら表面(stencil + 1)、falseなら裏面(stencil - 1)
+ */
+function rasterizeGeometryTriangle(v0, v1, v2, ramp, shadeLevel, isFrontFace) {
+    const triMinX = Math.min(v0.sx, v1.sx, v2.sx);
+    const triMaxX = Math.max(v0.sx, v1.sx, v2.sx);
+    if (triMaxX < 0 || triMinX >= WIDTH) return;
+
+    // Yソート
+    if (v0.sy > v1.sy) { const t = v0; v0 = v1; v1 = t; }
+    if (v0.sy > v2.sy) { const t = v0; v0 = v2; v2 = t; }
+    if (v1.sy > v2.sy) { const t = v1; v1 = v2; v2 = t; }
+
+    const yStart = Math.max(0, Math.ceil(v0.sy - 0.5));
+    const yEnd   = Math.min(HEIGHT - 1, Math.ceil(v2.sy - 0.5) - 1);
+    if (yStart > yEnd) return;
+
+    const totalHeight = v2.sy - v0.sy;
+    if (totalHeight <= 1e-5) return;
+    const invTotalHeight = 1.0 / totalHeight;
+
+    const topHeight = v1.sy - v0.sy;
+    const botHeight = v2.sy - v1.sy;
+    const invTopHeight = topHeight > 1e-5 ? 1.0 / topHeight : 0.0;
+    const invBotHeight = botHeight > 1e-5 ? 1.0 / botHeight : 0.0;
+
+    // シェーディング色計算
+    const clampedShade = Math.max(0, Math.min(2.999, shadeLevel));
+    const baseIdx = Math.floor(clampedShade);
+    const frac = clampedShade - baseIdx;
+    const cLow  = PALETTE_U32[ramp[baseIdx]];
+    const cHigh = PALETTE_U32[ramp[baseIdx + 1]];
+    const ditherThreshold = frac * 16.0;
+
+    // ステンシル増減値（Uint8Array は自動的に mod 256 でラップする）
+    const stencilDelta = isFrontFace ? 1 : 255; // +1 または -1 (mod 256)
+
+    for (let y = yStart; y <= yEnd; y++) {
+        const py = y + 0.5;
+        const isSecondHalf = py >= v1.sy || topHeight <= 1e-5;
+        if (isSecondHalf) {
+            if (botHeight <= 1e-5) continue;
+        } else {
+            if (topHeight <= 1e-5) continue;
+        }
+
+        const alpha = Math.max(0.0, Math.min(1.0, (py - v0.sy) * invTotalHeight));
+        const beta  = isSecondHalf
+            ? Math.max(0.0, Math.min(1.0, (py - v1.sy) * invBotHeight))
+            : Math.max(0.0, Math.min(1.0, (py - v0.sy) * invTopHeight));
+
+        let ax = v0.sx + (v2.sx - v0.sx) * alpha;
+        let az = v0.z  + (v2.z  - v0.z)  * alpha;
+
+        let bx = isSecondHalf
+            ? v1.sx + (v2.sx - v1.sx) * beta
+            : v0.sx + (v1.sx - v0.sx) * beta;
+        let bz = isSecondHalf
+            ? v1.z  + (v2.z  - v1.z)  * beta
+            : v0.z  + (v1.z  - v0.z)  * beta;
+
+        // スパイク防止バウンディングボックスクランプ
+        ax = Math.max(triMinX, Math.min(triMaxX, ax));
+        bx = Math.max(triMinX, Math.min(triMaxX, bx));
+
+        if (ax > bx) {
+            let tmp = ax; ax = bx; bx = tmp;
+            tmp = az; az = bz; bz = tmp;
+        }
+
+        const xStart = Math.max(0, Math.ceil(ax - 0.5));
+        const xEnd   = Math.min(WIDTH - 1, Math.ceil(bx - 0.5) - 1);
+        if (xStart > xEnd) continue;
+
+        const spanW = bx - ax;
+        const invSpanW = spanW > 1e-5 ? 1.0 / spanW : 0.0;
+        const rowOffset = y * WIDTH;
+        const bayerRow = (y & 3) << 2;
+
+        for (let x = xStart; x <= xEnd; x++) {
+            const t = spanW > 1e-5 ? Math.max(0.0, Math.min(1.0, ((x + 0.5) - ax) * invSpanW)) : 0.0;
+            const z = az + (bz - az) * t;
+            const idx = rowOffset + x;
+
+            // 深度テスト通過時にカラー・Z・ステンシルを更新
+            if (z < zBuffer[idx]) {
+                zBuffer[idx] = z;
+
+                // ★ Three.js webgl_clipping_stencil 方式のステンシルカウント ★
+                // 表面が描画されたら +1、裏面（空洞の内側）が描画されたら -1。
+                // カット面で開口している箇所のみ surface - backface != 0 が残る！
+                if (clipEnabled) {
+                    stencilBuffer[idx] = (stencilBuffer[idx] + stencilDelta) & 0xFF;
+                }
+
+                if (useDither) {
+                    const threshold = BAYER_4X4[bayerRow + (x & 3)];
+                    pixelBuffer[idx] = (ditherThreshold > threshold) ? cHigh : cLow;
+                } else {
+                    pixelBuffer[idx] = (frac >= 0.5) ? cHigh : cLow;
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Pass 2 用ラスタライザ：ステンシルキャップ（切断面）の塗りつぶし
+ * stencilBuffer[idx] !== 0 のピクセルのみを選択された断面カラーで塗りつぶす
+ */
+function rasterizeStencilCapTriangle(v0, v1, v2) {
+    const triMinX = Math.min(v0.sx, v1.sx, v2.sx);
+    const triMaxX = Math.max(v0.sx, v1.sx, v2.sx);
+    if (triMaxX < 0 || triMinX >= WIDTH) return;
+
+    if (v0.sy > v1.sy) { const t = v0; v0 = v1; v1 = t; }
+    if (v0.sy > v2.sy) { const t = v0; v0 = v2; v2 = t; }
+    if (v1.sy > v2.sy) { const t = v1; v1 = v2; v2 = t; }
+
+    const yStart = Math.max(0, Math.ceil(v0.sy - 0.5));
+    const yEnd   = Math.min(HEIGHT - 1, Math.ceil(v2.sy - 0.5) - 1);
+    if (yStart > yEnd) return;
+
+    const totalHeight = v2.sy - v0.sy;
+    if (totalHeight <= 1e-5) return;
+    const invTotalHeight = 1.0 / totalHeight;
+
+    const topHeight = v1.sy - v0.sy;
+    const botHeight = v2.sy - v1.sy;
+    const invTopHeight = topHeight > 1e-5 ? 1.0 / topHeight : 0.0;
+    const invBotHeight = botHeight > 1e-5 ? 1.0 / botHeight : 0.0;
+
+    const capMainU32 = PALETTE_U32[capColorIdx];
+    // 方眼グリッド線用の少し暗めまたは明るめのコントラスト色
+    const gridAltIdx = (capColorIdx === 0 || capColorIdx === 1 || capColorIdx === 8) ? 14 : 0;
+    const capGridU32 = PALETTE_U32[gridAltIdx];
+
+    for (let y = yStart; y <= yEnd; y++) {
+        const py = y + 0.5;
+        const isSecondHalf = py >= v1.sy || topHeight <= 1e-5;
+        if (isSecondHalf) {
+            if (botHeight <= 1e-5) continue;
+        } else {
+            if (topHeight <= 1e-5) continue;
+        }
+
+        const alpha = Math.max(0.0, Math.min(1.0, (py - v0.sy) * invTotalHeight));
+        const beta  = isSecondHalf
+            ? Math.max(0.0, Math.min(1.0, (py - v1.sy) * invBotHeight))
+            : Math.max(0.0, Math.min(1.0, (py - v0.sy) * invTopHeight));
+
+        let ax = v0.sx + (v2.sx - v0.sx) * alpha;
+        let az = v0.z  + (v2.z  - v0.z)  * alpha;
+        let au = v0.u  + (v2.u  - v0.u)  * alpha;
+        let av = v0.v  + (v2.v  - v0.v)  * alpha;
+
+        let bx = isSecondHalf
+            ? v1.sx + (v2.sx - v1.sx) * beta
+            : v0.sx + (v1.sx - v0.sx) * beta;
+        let bz = isSecondHalf
+            ? v1.z  + (v2.z  - v1.z)  * beta
+            : v0.z  + (v1.z  - v0.z)  * beta;
+        let bu = isSecondHalf
+            ? v1.u  + (v2.u  - v1.u)  * beta
+            : v0.u  + (v1.u  - v0.u)  * beta;
+        let bv = isSecondHalf
+            ? v1.v  + (v2.v  - v1.v)  * beta
+            : v0.v  + (v1.v  - v0.v)  * beta;
+
+        ax = Math.max(triMinX, Math.min(triMaxX, ax));
+        bx = Math.max(triMinX, Math.min(triMaxX, bx));
+
+        if (ax > bx) {
+            let tmp = ax; ax = bx; bx = tmp;
+            tmp = az; az = bz; bz = tmp;
+            tmp = au; au = bu; bu = tmp;
+            tmp = av; av = bv; bv = tmp;
+        }
+
+        const xStart = Math.max(0, Math.ceil(ax - 0.5));
+        const xEnd   = Math.min(WIDTH - 1, Math.ceil(bx - 0.5) - 1);
+        if (xStart > xEnd) continue;
+
+        const spanW = bx - ax;
+        const invSpanW = spanW > 1e-5 ? 1.0 / spanW : 0.0;
+        const rowOffset = y * WIDTH;
+
+        for (let x = xStart; x <= xEnd; x++) {
+            const idx = rowOffset + x;
+
+            // ★ STENCIL TEST: stencilBuffer[idx] !== 0 の領域（切断された内部断面）だけを描画 ★
+            if (stencilBuffer[idx] !== 0) {
+                const t = spanW > 1e-5 ? Math.max(0.0, Math.min(1.0, ((x + 0.5) - ax) * invSpanW)) : 0.0;
+                const z = az + (bz - az) * t - 0.002; // Zファイティング防止の微小バイアス
+
+                // 切断面の手前に他のパーツ（腕や鼻など）がある場合はZテストで正しく遮蔽される
+                if (z <= zBuffer[idx] + 0.02) {
+                    zBuffer[idx] = Math.min(zBuffer[idx], z);
+
+                    if (capPatternGrid) {
+                        const uCoord = au + (bu - au) * t;
+                        const vCoord = av + (bv - av) * t;
+                        // 断面上のCAD風方眼ドット/グリッドパターン
+                        const gu = Math.abs((uCoord * 6.0) - Math.round(uCoord * 6.0));
+                        const gv = Math.abs((vCoord * 6.0) - Math.round(vCoord * 6.0));
+                        const isGridLine = (gu < 0.06 || gv < 0.06) && ((x + y) & 1 === 0);
+                        pixelBuffer[idx] = isGridLine ? capGridU32 : capMainU32;
+                    } else {
+                        pixelBuffer[idx] = capMainU32;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Zバッファ対応 2Dライン描画（クリッピング平面の枠線ガイド表示用）
+ */
+function drawLine3D(p0, p1, colorU32, dashed = false) {
+    let ix0 = Math.round(p0.sx), iy0 = Math.round(p0.sy);
+    let ix1 = Math.round(p1.sx), iy1 = Math.round(p1.sy);
+
+    const dx = Math.abs(ix1 - ix0);
+    const dy = Math.abs(iy1 - iy0);
+    const sx = ix0 < ix1 ? 1 : -1;
+    const sy = iy0 < iy1 ? 1 : -1;
+    let err = dx - dy;
+
+    const steps = Math.max(dx, dy, 1);
+    let step = 0;
+
+    while (true) {
+        if (!dashed || ((step >> 1) & 1) === 0) {
+            if (ix0 >= 0 && ix0 < WIDTH && iy0 >= 0 && iy0 < HEIGHT) {
+                const t = step / steps;
+                const z = p0.z + (p1.z - p0.z) * t - 0.01;
+                const idx = iy0 * WIDTH + ix0;
+                if (z <= zBuffer[idx]) {
+                    pixelBuffer[idx] = colorU32;
+                }
+            }
+        }
+        if (ix0 === ix1 && iy0 === iy1) break;
+        const e2 = 2 * err;
+        if (e2 > -dy) { err -= dy; ix0 += sx; }
+        if (e2 < dx)  { err += dx; iy0 += sy; }
+        step++;
+    }
+}
+
+/**
+ * ============================================================================
+ * 7. メイン 3D レンダリングパイプライン (Pass 1 + Pass 2 + Debug Views)
+ * ============================================================================
+ */
+function renderScene() {
+    clearBuffers();
+
+    const cosY = Math.cos(rotY), sinY = Math.sin(rotY);
+    const cosX = Math.cos(rotX), sinX = Math.sin(rotX);
+
+    // 平行光源
+    const lx = 0.45, ly = 0.72, lz = 0.52;
+    const lLen = Math.hypot(lx, ly, lz);
+    const lightDir = { x: lx / lLen, y: ly / lLen, z: lz / lLen };
+
+    const fov = 225.0;
+    const halfW = WIDTH * 0.5;
+    const halfH = HEIGHT * 0.5 + 15;
+
+    // ポーズ適用済み頂点リストを作成
+    const posedVerts = new Array(baseVertices.length);
+    for (let i = 0; i < baseVertices.length; i++) {
+        posedVerts[i] = getPosedVertex(baseVertices[i]);
+    }
+
+    const plane = getClippingPlaneBasis();
+
+    // ------------------------------------------------------------------------
+    // PASS 1: クリッピング付きジオメトリ描画 & ステンシルバッファ表裏カウント
+    // ------------------------------------------------------------------------
+    for (let i = 0; i < triangles.length; i++) {
+        const tri = triangles[i];
+        const v0 = posedVerts[tri.i0];
+        const v1 = posedVerts[tri.i1];
+        const v2 = posedVerts[tri.i2];
+
+        // クリッピングが有効なら 3D空間上で三角形を平面切断（最大4〜5頂点の多角形になる）
+        let poly = [v0, v1, v2];
+        if (clipEnabled) {
+            poly = clipPolygonAgainstPlane(poly, plane);
+            if (poly.length < 3) continue; // 完全にカットされた三角形はスキップ
+        }
+
+        // 切断後の多角形を三角形ファン (poly[0], poly[k], poly[k+1]) に分割して投影・描画
+        const projPoly = new Array(poly.length);
+        for (let k = 0; k < poly.length; k++) {
+            projPoly[k] = projectPoint(poly[k].x, poly[k].y, poly[k].z, cosY, sinY, cosX, sinX, fov, halfW, halfH);
+        }
+
+        for (let k = 1; k < projPoly.length - 1; k++) {
+            const p0 = projPoly[0];
+            const p1 = projPoly[k];
+            const p2 = projPoly[k + 1];
+
+            // 2Dスクリーン外積による表裏判定（CCWが表面: cross2D < 0, CWが裏面: cross2D > 0）
+            const cross2D = (p1.sx - p0.sx) * (p2.sy - p0.sy) - (p1.sy - p0.sy) * (p2.sx - p0.sx);
+            if (Math.abs(cross2D) < 1e-4) continue;
+
+            const isFrontFace = cross2D < 0;
+
+            // クリッピング無効時は通常の背面カリングで裏面をスキップ（高速化）
+            if (!clipEnabled && !isFrontFace) continue;
+
+            if (isFrontFace) {
+                // 表面のライティング計算
+                const ux = p1.vx - p0.vx, uy = p1.vy - p0.vy, uz = p1.vz - p0.vz;
+                const vx = p2.vx - p0.vx, vy = p2.vy - p0.vy, vz = p2.vz - p0.vz;
+                let nx = uy * vz - uz * vy;
+                let ny = uz * vx - ux * vz;
+                let nz = ux * vy - uy * vx;
+                const nLen = Math.hypot(nx, ny, nz);
+                if (nLen > 1e-5) { nx /= nLen; ny /= nLen; nz /= nLen; }
+
+                const ndotl = Math.max(0, nx * lightDir.x + ny * lightDir.y + nz * lightDir.z);
+                const shadeLevel = 0.45 + ndotl * 2.55;
+
+                rasterizeGeometryTriangle(p0, p1, p2, tri.mat.ramp, shadeLevel, true);
+            } else {
+                // 裏面（モデルの内部側）：ステンシルをデクリメント (-1) し、暗い影色で描画
+                const innerIdx = tri.mat.inner;
+                rasterizeGeometryTriangle(p0, p1, p2, [innerIdx, innerIdx, innerIdx, innerIdx], 0.0, false);
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // PASS 2: ステンシルバッファによる切断面（キャップポリゴン）の塗りつぶし
+    // ------------------------------------------------------------------------
+    if (clipEnabled) {
+        // 平面上にモデル全体を十分覆う大きなクワッド（半径 R = 2.4）を配置
+        const R = 2.4;
+        const cornersLocal = [
+            { u: -R, v: -R },
+            { u:  R, v: -R },
+            { u:  R, v:  R },
+            { u: -R, v:  R }
+        ];
+
+        const capVerts = cornersLocal.map(c => {
+            const lx = plane.cx + plane.ux * c.u + plane.vx * c.v;
+            const ly = plane.cy + plane.uy * c.u + plane.vy * c.v;
+            const lz = plane.cz + plane.uz * c.u + plane.vz * c.v;
+            const proj = projectPoint(lx, ly, lz, cosY, sinY, cosX, sinX, fov, halfW, halfH);
+            proj.u = c.u;
+            proj.v = c.v;
+            return proj;
+        });
+
+        // クワッドを構成する2枚の三角形をステンシルテスト付きで描画
+        // （正面・背面どちらから見てもキャップされるよう両面ラスタライズ）
+        rasterizeStencilCapTriangle(capVerts[0], capVerts[1], capVerts[2]);
+        rasterizeStencilCapTriangle(capVerts[0], capVerts[2], capVerts[3]);
+
+        // クリッピング平面の枠線フレーム表示（補助ビジュアル）
+        if (showPlaneGrid) {
+            const frameR = 1.45;
+            const fCorners = [
+                { u: -frameR, v: -frameR },
+                { u:  frameR, v: -frameR },
+                { u:  frameR, v:  frameR },
+                { u: -frameR, v:  frameR }
+            ].map(c => {
+                const lx = plane.cx + plane.ux * c.u + plane.vx * c.v;
+                const ly = plane.cy + plane.uy * c.u + plane.vy * c.v;
+                const lz = plane.cz + plane.uz * c.u + plane.vz * c.v;
+                return projectPoint(lx, ly, lz, cosY, sinY, cosX, sinX, fov, halfW, halfH);
+            });
+
+            const frameCol = PALETTE_U32[11]; // シアン (#73eff7)
+            drawLine3D(fCorners[0], fCorners[1], frameCol, true);
+            drawLine3D(fCorners[1], fCorners[2], frameCol, true);
+            drawLine3D(fCorners[2], fCorners[3], frameCol, true);
+            drawLine3D(fCorners[3], fCorners[0], frameCol, true);
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // デバッグビュー切替（ステンシルバッファ可視化 / Zバッファ可視化）
+    // ------------------------------------------------------------------------
+    if (viewMode === 'stencil') {
+        for (let i = 0; i < NUM_PIXELS; i++) {
+            const s = stencilBuffer[i];
+            if (s !== 0) {
+                // ステンシル値 != 0（切り口マスク）を鮮やかなシアン/イエローで強調表示
+                pixelBuffer[i] = (s === 1) ? PALETTE_U32[11] : PALETTE_U32[4];
+            } else if (zBuffer[i] < 9000.0) {
+                // モデル本体は暗いグレーでシルエット表示
+                pixelBuffer[i] = PALETTE_U32[15];
+            } else {
+                pixelBuffer[i] = PALETTE_U32[0];
+            }
+        }
+    } else if (viewMode === 'zbuffer') {
+        const zPalette = [12, 11, 10, 9, 8, 15, 0];
+        for (let i = 0; i < NUM_PIXELS; i++) {
+            const z = zBuffer[i];
+            if (z < 9000.0) {
+                const normZ = Math.max(0, Math.min(1, (z - 2.3) / 3.0));
+                const zi = Math.min(zPalette.length - 1, Math.floor(normZ * zPalette.length));
+                pixelBuffer[i] = PALETTE_U32[zPalette[zi]];
+            } else {
+                pixelBuffer[i] = PALETTE_U32[0];
+            }
+        }
+    }
+
+    ctx.putImageData(imgData, 0, 0);
+}
+
+/**
+ * ============================================================================
+ * 8. インタラクティブ操作（モバイルスクロール抑止・ピンチズーム・UIイベント）
+ * ============================================================================
+ */
+const viewport = document.getElementById('viewport-container');
+let isDragging = false;
+let prevX = 0, prevY = 0;
+let pinchStartDist = 0;
+let pinchStartCamDist = camDist;
+
+function onPointerDown(clientX, clientY) {
+    isDragging = true;
+    prevX = clientX;
+    prevY = clientY;
+}
+
+function onPointerMove(clientX, clientY) {
+    if (!isDragging) return;
+    const dx = clientX - prevX;
+    const dy = clientY - prevY;
+    prevX = clientX;
+    prevY = clientY;
+
+    rotY += dx * 0.012;
+    rotX = Math.max(-1.25, Math.min(1.25, rotX + dy * 0.012));
+}
+
+function onPointerUp() {
+    isDragging = false;
+    pinchStartDist = 0;
+}
+
+function getTouchDistance(touches) {
+    return Math.hypot(
+        touches[0].clientX - touches[1].clientX,
+        touches[0].clientY - touches[1].clientY
+    );
+}
+
+viewport.addEventListener('mousedown', (e) => onPointerDown(e.clientX, e.clientY));
+window.addEventListener('mousemove', (e) => onPointerMove(e.clientX, e.clientY));
+window.addEventListener('mouseup', onPointerUp);
+
+viewport.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    if (e.touches.length === 1) {
+        onPointerDown(e.touches[0].clientX, e.touches[0].clientY);
+    } else if (e.touches.length === 2) {
+        isDragging = false;
+        pinchStartDist = getTouchDistance(e.touches);
+        pinchStartCamDist = camDist;
+    }
+}, { passive: false });
+
+viewport.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if (e.touches.length === 1 && isDragging) {
+        onPointerMove(e.touches[0].clientX, e.touches[0].clientY);
+    } else if (e.touches.length === 2 && pinchStartDist > 0) {
+        const currentDist = getTouchDistance(e.touches);
+        const scale = pinchStartDist / Math.max(10, currentDist);
+        camDist = Math.max(2.6, Math.min(6.5, pinchStartCamDist * scale));
+    }
+}, { passive: false });
+
+viewport.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    if (e.touches.length === 1) {
+        pinchStartDist = 0;
+        onPointerDown(e.touches[0].clientX, e.touches[0].clientY);
+    } else if (e.touches.length === 0) {
+        onPointerUp();
+    }
+}, { passive: false });
+
+viewport.addEventListener('touchcancel', onPointerUp, { passive: false });
+
+viewport.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    camDist = Math.max(2.6, Math.min(6.5, camDist + e.deltaY * 0.003));
+}, { passive: false });
+
+// ビューモード切替ボタン
+const viewBtns = document.querySelectorAll('.view-btn');
+const badgeMode = document.getElementById('badge-mode');
+viewBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+        viewMode = btn.dataset.view;
+        viewBtns.forEach(b => {
+            const active = b.dataset.view === viewMode;
+            b.className = active
+                ? 'view-btn py-1.5 px-2 bg-[#3b5dc9] text-[#f4f4f4] text-[11px] mono font-bold rounded-lg border border-[#73eff7]/60 transition'
+                : 'view-btn py-1.5 px-2 bg-[#25283d] hover:bg-[#333c57] text-[#94b0c2] text-[11px] mono font-bold rounded-lg border border-[#333c57] transition';
+        });
+        const labels = {
+            normal: 'MODE: LIT + CAP',
+            stencil: 'MODE: STENCIL BUFFER',
+            zbuffer: 'MODE: Z-BUFFER'
+        };
+        badgeMode.textContent = labels[viewMode];
+    });
+});
+
+// クリッピング軸切替ボタン
+const axisBtns = document.querySelectorAll('.axis-btn');
+const sliderOffset = document.getElementById('slider-offset');
+const valOffset = document.getElementById('val-offset');
+
+function setAxisRanges(axis) {
+    clipAxis = axis;
+    if (axis === 'y') {
+        sliderOffset.min = "-0.70";
+        sliderOffset.max = "2.25";
+        clipOffset = 0.85;
+    } else if (axis === 'x') {
+        sliderOffset.min = "-0.95";
+        sliderOffset.max = "0.95";
+        clipOffset = 0.0;
+    } else if (axis === 'z') {
+        sliderOffset.min = "-0.65";
+        sliderOffset.max = "0.85";
+        clipOffset = 0.15;
+    } else {
+        sliderOffset.min = "-0.80";
+        sliderOffset.max = "1.85";
+        clipOffset = 0.65;
+    }
+    sliderOffset.value = clipOffset.toFixed(2);
+    valOffset.textContent = (clipOffset >= 0 ? '+' : '') + clipOffset.toFixed(2);
+}
+
+axisBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+        setAxisRanges(btn.dataset.axis);
+        axisBtns.forEach(b => {
+            const active = b.dataset.axis === clipAxis;
+            b.className = active
+                ? 'axis-btn py-1.5 bg-[#3b5dc9] text-[#f4f4f4] text-[11px] mono font-bold rounded-lg border border-[#73eff7]/50 transition'
+                : 'axis-btn py-1.5 bg-[#1a1c2c] hover:bg-[#333c57] text-[#94b0c2] text-[11px] mono font-bold rounded-lg border border-[#333c57] transition';
+        });
+    });
+});
+
+sliderOffset.addEventListener('input', (e) => {
+    clipOffset = parseFloat(e.target.value);
+    valOffset.textContent = (clipOffset >= 0 ? '+' : '') + clipOffset.toFixed(2);
+});
+
+document.getElementById('opt-clip-enable').addEventListener('change', (e) => {
+    clipEnabled = e.target.checked;
+    document.getElementById('badge-stencil').textContent = clipEnabled ? 'CLIP: ON' : 'CLIP: OFF';
+});
+
+document.getElementById('btn-flip-plane').addEventListener('click', () => {
+    clipFlip = !clipFlip;
+});
+
+document.getElementById('opt-plane-grid').addEventListener('change', (e) => {
+    showPlaneGrid = e.target.checked;
+});
+
+document.getElementById('opt-cap-grid').addEventListener('change', (e) => {
+    capPatternGrid = e.target.checked;
+});
+
+document.getElementById('opt-dither').addEventListener('change', (e) => {
+    useDither = e.target.checked;
+});
+
+document.getElementById('opt-crt').addEventListener('change', (e) => {
+    document.getElementById('crt-effect').classList.toggle('hidden', !e.target.checked);
+});
+
+document.getElementById('btn-reset').addEventListener('click', () => {
+    rotY = 0.55;
+    rotX = 0.25;
+    camDist = 4.3;
+});
+
+const btnPose = document.getElementById('btn-pose');
+btnPose.addEventListener('click', () => {
+    jumpPose = !jumpPose;
+    btnPose.textContent = `POSE: ${jumpPose ? 'JUMP' : 'IDLE'}`;
+    btnPose.classList.toggle('bg-[#3b5dc9]', jumpPose);
+    btnPose.classList.toggle('bg-[#333c57]', !jumpPose);
+});
+
+const btnAutoRotate = document.getElementById('btn-autorotate');
+btnAutoRotate.addEventListener('click', () => {
+    autoRotate = !autoRotate;
+    btnAutoRotate.textContent = `AUTO ROT: ${autoRotate ? 'ON' : 'OFF'}`;
+    btnAutoRotate.className = autoRotate
+        ? 'px-3 py-1.5 bg-[#38b764] active:scale-95 text-[11px] mono font-semibold rounded-lg transition text-[#1a1c2c]'
+        : 'px-3 py-1.5 bg-[#333c57] active:scale-95 text-[11px] mono font-semibold rounded-lg transition text-[#f4f4f4]';
+});
+
+/**
+ * ============================================================================
+ * 9. アニメーションループ
+ * ============================================================================
+ */
+let lastTime = performance.now();
+let frameCount = 0;
+let fpsTimer = 0;
+const fpsDisplay = document.getElementById('stat-fps');
+
+function mainLoop(now) {
+    const dt = (now - lastTime) / 1000;
+    lastTime = now;
+
+    if (autoRotate && !isDragging) {
+        rotY += 0.75 * dt;
+    }
+
+    renderScene();
+
+    frameCount++;
+    fpsTimer += dt;
+    if (fpsTimer >= 0.5) {
+        fpsDisplay.textContent = Math.round(frameCount / fpsTimer);
+        frameCount = 0;
+        fpsTimer = 0;
+    }
+
+    requestAnimationFrame(mainLoop);
+}
+
+window.onload = function () {
+    requestAnimationFrame(mainLoop);
+};
+</script>
+</body>
+</html>

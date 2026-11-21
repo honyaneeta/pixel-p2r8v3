@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>MSX2+ SCREEN 12 / SCREEN 8 / TIC-80 Volumetric Clouds (Advection Sim)</title>
+<style>
+  :root {
+    --bg: #0c0e14;
+    --panel: #151924;
+    --border: #2a3246;
+    --text: #e2e8f0;
+    --muted: #8b9bb4;
+    --accent: #38bdf8;
+    --accent2: #f59e0b;
+    --good: #34d399;
+  }
+  * {
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 12px;
+    gap: 12px;
+  }
+  header {
+    width: 100%;
+    max-width: 960px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+  }
+  .title-block h1 {
+    margin: 0;
+    font-size: 15px;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+  }
+  .title-block p {
+    margin: 2px 0 0;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .mode-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .mode-btn {
+    background: #1e2433;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .mode-btn:hover {
+    border-color: var(--accent);
+  }
+  .mode-btn.active {
+    background: var(--accent);
+    color: #08101c;
+    font-weight: bold;
+    border-color: var(--accent);
+  }
+  .main-stage {
+    width: 100%;
+    max-width: 960px;
+    display: grid;
+    grid-template-columns: 1fr 290px;
+    gap: 12px;
+  }
+  @media (max-width: 820px) {
+    .main-stage {
+      grid-template-columns: 1fr;
+    }
+  }
+  .viewport-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .canvas-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 256 / 212;
+    background: #000;
+    border: 2px solid #283044;
+    border-radius: 4px;
+    overflow: hidden;
+    touch-action: none;
+    cursor: grab;
+  }
+  .canvas-wrap:active {
+    cursor: grabbing;
+  }
+  canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+  .hud-top {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    pointer-events: none;
+    font-size: 11px;
+    text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+  }
+  .hud-badge {
+    background: rgba(10, 14, 22, 0.72);
+    border: 1px solid rgba(255,255,255,0.18);
+    padding: 4px 7px;
+    border-radius: 4px;
+    line-height: 1.4;
+  }
+  .warp-group {
+    display: flex;
+    gap: 4px;
+    pointer-events: auto;
+  }
+  .warp-btn {
+    background: rgba(15, 23, 42, 0.85);
+    color: #f8fafc;
+    border: 1px solid rgba(56, 189, 248, 0.5);
+    border-radius: 4px;
+    padding: 4px 7px;
+    font-size: 10px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .warp-btn:hover {
+    background: var(--accent);
+    color: #000;
+  }
+  .inspector-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    background: #0f131c;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 11px;
+  }
+  .swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 1px solid #fff;
+    vertical-align: middle;
+    margin-right: 6px;
+    border-radius: 2px;
+  }
+  .controls-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .ctrl-section-title {
+    font-size: 11px;
+    color: var(--accent);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 4px;
+    margin-bottom: 2px;
+    font-weight: bold;
+  }
+  .ctrl-row {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 11px;
+  }
+  .ctrl-label {
+    display: flex;
+    justify-content: space-between;
+    color: var(--muted);
+  }
+  .ctrl-label span:last-child {
+    color: var(--text);
+    font-weight: bold;
+  }
+  input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  .preset-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+  }
+  .small-btn {
+    background: #1e2433;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 6px 4px;
+    font-size: 11px;
+    font-family: inherit;
+    cursor: pointer;
+    text-align: center;
+  }
+  .small-btn:hover {
+    border-color: var(--accent2);
+  }
+  .small-btn.active {
+    background: var(--accent2);
+    color: #0b0f17;
+    font-weight: bold;
+    border-color: var(--accent2);
+  }
+  .touch-pad {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 5px;
+    margin-top: 2px;
+  }
+  .pad-btn {
+    background: #1c2333;
+    color: var(--text);
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 8px 0;
+    font-size: 11px;
+    font-weight: bold;
+    font-family: inherit;
+    cursor: pointer;
+    text-align: center;
+    touch-action: manipulation;
+  }
+  .pad-btn:active, .pad-btn.pressed {
+    background: var(--accent);
+    color: #08101c;
+  }
+  .hint {
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="title-block">
+    <h1>VOLUMETRIC CLOUDS // V9958 &amp; TIC-80 EMULATOR</h1>
+    <p id="specSubtitle">MSX2+ V9958 SCREEN 12 (256×212 / YJK 19,268 Colors / Advection Cloud Sim)</p>
+  </div>
+  <div class="mode-tabs" id="modeTabs">
+    <button class="mode-btn active" data-mode="sc12">SCREEN 12 (YJK)</button>
+    <button class="mode-btn" data-mode="sc8">SCREEN 8 (256色)</button>
+    <button class="mode-btn" data-mode="tic80">TIC-80 (16色)</button>
+    <button class="mode-btn" data-mode="raw">RAW RGB (24bit)</button>
+  </div>
+</header>
+
+<div class="main-stage">
+  <div class="viewport-card">
+    <div class="canvas-wrap" id="canvasWrap">
+      <canvas id="screen" width="256" height="212"></canvas>
+      <div class="hud-top">
+        <div class="hud-badge" id="hudTelemetry">
+          ALT: 115m (BELOW CLOUD)<br>
+          POS: 0, 115, 0 | FPS: 60
+        </div>
+        <div class="warp-group">
+          <button class="warp-btn" id="warpAbove">雲の上 390m</button>
+          <button class="warp-btn" id="warpInside">雲の中 240m</button>
+          <button class="warp-btn" id="warpBelow">雲の下 115m</button>
+        </div>
+      </div>
+    </div>
+    <div class="inspector-bar">
+      <div id="inspectorText">
+        <span class="swatch" id="inspSwatch" style="background:#5599dd;"></span>
+        カーソル／タップでピクセルのハードウェア値を検査
+      </div>
+      <div id="resBadge" style="color: var(--accent); font-weight: bold;">256×212</div>
+    </div>
+  </div>
+
+  <div class="controls-card">
+    <div class="ctrl-section-title">ATMOSPHERE &amp; ADVECTION SIM</div>
+    <div class="preset-row" id="timePresets">
+      <button class="small-btn active" data-preset="day">DAYLIGHT</button>
+      <button class="small-btn" data-preset="sunset">SUNSET</button>
+      <button class="small-btn" data-preset="twilight">TWILIGHT</button>
+    </div>
+
+    <div class="ctrl-row">
+      <div class="ctrl-label"><span>太陽高度 (Sun Elevation)</span><span id="valSunElev">28°</span></div>
+      <input type="range" id="sunElev" min="-5" max="80" value="28">
+    </div>
+
+    <div class="ctrl-row">
+      <div class="ctrl-label"><span>太陽方位 (Sun Azimuth)</span><span id="valSunAzim">25°</span></div>
+      <input type="range" id="sunAzim" min="-180" max="180" value="25">
+    </div>
+
+    <div class="ctrl-row">
+      <div class="ctrl-label"><span>雲量・目標密度 (Target)</span><span id="valCoverage">56%</span></div>
+      <input type="range" id="coverage" min="15" max="90" value="56">
+    </div>
+
+    <div class="ctrl-row">
+      <div class="ctrl-label"><span>気流移流速度 (Advection)</span><span id="valWind">1.0x</span></div>
+      <input type="range" id="windSpeed" min="0" max="30" value="10">
+    </div>
+
+    <div class="ctrl-row">
+      <div class="ctrl-label"><span>湧き出し・消滅 (Evo Rate)</span><span id="valEvo">1.0x</span></div>
+      <input type="range" id="evoRate" min="0" max="30" value="10">
+    </div>
+
+    <div class="ctrl-section-title">HARDWARE QUANTIZATION</div>
+    <div class="ctrl-row">
+      <div class="ctrl-label"><span>4×4 ベイヤーディザ強度</span><span id="valDither">65%</span></div>
+      <input type="range" id="ditherAmt" min="0" max="150" value="65">
+    </div>
+
+    <div class="ctrl-row">
+      <div class="ctrl-label"><span>描画スケール (Internal Render)</span><span id="valScale">1/2 (高速)</span></div>
+      <input type="range" id="renderDiv" min="1" max="2" step="1" value="2">
+    </div>
+
+    <div class="ctrl-section-title">3D FLIGHT PAD (雲層: 140m〜360m)</div>
+    <div class="touch-pad">
+      <button class="pad-btn" data-key="KeyQ">DN (Q)</button>
+      <button class="pad-btn" data-key="KeyW">FWD (W)</button>
+      <button class="pad-btn" data-key="KeyE">UP (E)</button>
+      <button class="pad-btn" id="btnPause">PAUSE</button>
+      <button class="pad-btn" data-key="KeyA">LEFT (A)</button>
+      <button class="pad-btn" data-key="KeyS">BACK (S)</button>
+      <button class="pad-btn" data-key="KeyD">RIGHT (D)</button>
+      <button class="pad-btn" id="btnReset">RESET</button>
+    </div>
+    <div class="hint">
+      画面ドラッグで視点回転。WASD／矢印で移動、E/Spaceで上昇、Q/Shiftで下降。3D密度グリッドが移流・生成・消滅を毎フレーム更新します。
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('screen');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const canvasWrap = document.getElementById('canvasWrap');
+
+  // Sweetie-16 Palette (TIC-80)
+  const SWEETIE16 = [
+    { name: 'BLACK',       r: 26,  g: 28,  b: 44  },
+    { name: 'PURPLE',      r: 93,  g: 39,  b: 93  },
+    { name: 'RED',         r: 177, g: 62,  b: 83  },
+    { name: 'ORANGE',      r: 239, g: 125, b: 87  },
+    { name: 'YELLOW',      r: 255, g: 205, b: 117 },
+    { name: 'LIGHT GREEN', r: 167, g: 240, b: 112 },
+    { name: 'GREEN',       r: 56,  g: 183, b: 100 },
+    { name: 'DARK GREEN',  r: 37,  g: 113, b: 121 },
+    { name: 'DARK BLUE',   r: 41,  g: 54,  b: 111 },
+    { name: 'BLUE',        r: 59,  g: 93,  b: 201 },
+    { name: 'LIGHT BLUE',  r: 65,  g: 166, b: 246 },
+    { name: 'CYAN',        r: 115, g: 239, b: 247 },
+    { name: 'WHITE',       r: 244, g: 244, b: 244 },
+    { name: 'LIGHT GREY',  r: 148, g: 176, b: 194 },
+    { name: 'GREY',        r: 86,  g: 108, b: 134 },
+    { name: 'DARK GREY',   r: 51,  g: 60,  b: 87  }
+  ];
+
+  // 4x4 Bayer Matrix normalized to [-0.5, +0.5]
+  const BAYER4 = [
+    -0.46875,  0.03125, -0.34375,  0.15625,
+     0.28125, -0.21875,  0.40625, -0.09375,
+    -0.28125,  0.21875, -0.40625,  0.09375,
+     0.46875, -0.03125,  0.34375, -0.15625
+  ];
+
+  let mode = 'sc12'; // 'sc12' | 'sc8' | 'tic80' | 'raw'
+  const screenW = 256;
+  const screenH = 212;
+  const imgData = ctx.createImageData(screenW, screenH);
+  const outPixels = imgData.data;
+  const rawRgbBuffer = new Uint8ClampedArray(screenW * screenH * 3);
+  const inspectData = new Array(screenW * screenH);
+
+  // Camera & Simulation State
+  const cam = {
+    x: 0,
+    y: 115,
+    z: 0,
+    yaw: 0.35,
+    pitch: 0.22
+  };
+
+  const state = {
+    sunElev: 28,
+    sunAzim: 25,
+    coverage: 0.56,
+    windSpeed: 1.0,
+    evoRate: 1.0,
+    ditherAmt: 0.65,
+    renderDiv: 2,
+    paused: false,
+    time: 12.0,
+    preset: 'day'
+  };
+
+  // Precomputed 3D Value Noise LUT for detail & source generation
+  const NOISE_SIZE = 32;
+  const NOISE_MASK = NOISE_SIZE - 1;
+  const noiseGrid = new Float32Array(NOISE_SIZE * NOISE_SIZE * NOISE_SIZE);
+  for (let i = 0; i < noiseGrid.length; i++) {
+    noiseGrid[i] = Math.random();
+  }
+
+  function sampleNoise3D(x, y, z) {
+    const xi = Math.floor(x);
+    const yi = Math.floor(y);
+    const zi = Math.floor(z);
+    const xf = x - xi;
+    const yf = y - yi;
+    const zf = z - zi;
+    const u = xf * xf * (3 - 2 * xf);
+    const v = yf * yf * (3 - 2 * yf);
+    const w = zf * zf * (3 - 2 * zf);
+
+    const x0 = xi & NOISE_MASK, x1 = (xi + 1) & NOISE_MASK;
+    const y0 = (yi & NOISE_MASK) * NOISE_SIZE, y1 = ((yi + 1) & NOISE_MASK) * NOISE_SIZE;
+    const z0 = (zi & NOISE_MASK) * NOISE_SIZE * NOISE_SIZE, z1 = ((zi + 1) & NOISE_MASK) * NOISE_SIZE * NOISE_SIZE;
+
+    const c000 = noiseGrid[x0 + y0 + z0];
+    const c100 = noiseGrid[x1 + y0 + z0];
+    const c010 = noiseGrid[x0 + y1 + z0];
+    const c110 = noiseGrid[x1 + y1 + z0];
+    const c001 = noiseGrid[x0 + y0 + z1];
+    const c101 = noiseGrid[x1 + y0 + z1];
+    const c011 = noiseGrid[x0 + y1 + z1];
+    const c111 = noiseGrid[x1 + y1 + z1];
+
+    const x00 = c000 + u * (c100 - c000);
+    const x10 = c010 + u * (c110 - c010);
+    const x01 = c001 + u * (c101 - c001);
+    const x11 = c011 + u * (c111 - c011);
+
+    const y0v = x00 + v * (x10 - x00);
+    const y1v = x01 + v * (x11 - x01);
+
+    return y0v + w * (y1v - y0v);
+  }
+
+  function fbmDetail(x, y, z) {
+    let val = 0.0;
+    val += 0.62 * sampleNoise3D(x, y, z);
+    val += 0.38 * sampleNoise3D(x * 2.13 + 3.1, y * 2.13 - 1.7, z * 2.13 + 2.3);
+    return val;
+  }
+
+  // 1. 3D Advection + Source/Decay Cloud Density Grid
+  const CLOUD_BOTTOM = 140.0;
+  const CLOUD_TOP = 360.0;
+  const CLOUD_HEIGHT = CLOUD_TOP - CLOUD_BOTTOM;
+
+  const GX = 32;
+  const GY = 12;
+  const GZ = 32;
+  const CELL_SIZE = 56.0; // covers ~1792m x 1792m horizontally
+  const WORLD_SPAN_X = GX * CELL_SIZE;
+  const WORLD_SPAN_Z = GZ * CELL_SIZE;
+
+  let densCurr = new Float32Array(GX * GY * GZ);
+  let densNext = new Float32Array(GX * GY * GZ);
+
+  function gridIndex(ix, iy, iz) {
+    const wx = ((ix % GX) + GX) % GX;
+    const wz = ((iz % GZ) + GZ) % GZ;
+    const cy = Math.max(0, Math.min(GY - 1, iy));
+    return (cy * GZ + wz) * GX + wx;
+  }
+
+  function sampleGridTrilinear(fx, fy, fz) {
+    const x0 = Math.floor(fx);
+    const y0 = Math.floor(fy);
+    const z0 = Math.floor(fz);
+    const tx = fx - x0;
+    const ty = fy - y0;
+    const tz = fz - z0;
+
+    const i000 = gridIndex(x0, y0, z0);
+    const i100 = gridIndex(x0 + 1, y0, z0);
+    const i010 = gridIndex(x0, y0 + 1, z0);
+    const i110 = gridIndex(x0 + 1, y0 + 1, z0);
+    const i001 = gridIndex(x0, y0, z0 + 1);
+    const i101 = gridIndex(x0 + 1, y0, z0 + 1);
+    const i011 = gridIndex(x0, y0 + 1, z0 + 1);
+    const i111 = gridIndex(x0 + 1, y0 + 1, z0 + 1);
+
+    const c000 = densCurr[i000], c100 = densCurr[i100];
+    const c010 = densCurr[i010], c110 = densCurr[i110];
+    const c001 = densCurr[i001], c101 = densCurr[i101];
+    const c011 = densCurr[i011], c111 = densCurr[i111];
+
+    const x00 = c000 + tx * (c100 - c000);
+    const x10 = c010 + tx * (c110 - c010);
+    const x01 = c001 + tx * (c101 - c001);
+    const x11 = c011 + tx * (c111 - c011);
+
+    const y0v = x00 + ty * (x10 - x00);
+    const y1v = x01 + ty * (x11 - x01);
+    return y0v + tz * (y1v - y0v);
+  }
+
+  // Initialize cloud field
+  for (let iy = 0; iy < GY; iy++) {
+    const hNorm = (iy + 0.5) / GY;
+    const profile = Math.min(1.0, hNorm * 6.0) * Math.max(0.0, 1.0 - Math.pow(Math.max(0, (hNorm - 0.35) / 0.65), 1.6));
+    for (let iz = 0; iz < GZ; iz++) {
+      for (let ix = 0; ix < GX; ix++) {
+        const n = sampleNoise3D(ix * 0.24, iy * 0.45, iz * 0.24);
+        const rawD = Math.max(0.0, (n * profile - (1.0 - state.coverage * 0.85) * 0.48) * 3.0);
+        densCurr[(iy * GZ + iz) * GX + ix] = Math.min(1.0, rawD);
+      }
+    }
+  }
+
+  function stepCloudSimulation(dt) {
+    if (state.paused) return;
+    state.time += dt * state.windSpeed;
+
+    const advSpeed = state.windSpeed * 0.9; // cells/sec
+    const evo = state.evoRate * dt * 0.35;
+    const targetThresh = 1.0 - state.coverage * 0.85;
+
+    for (let iy = 0; iy < GY; iy++) {
+      const hNorm = (iy + 0.5) / GY;
+      const heightProfile = Math.min(1.0, hNorm * 6.0) * Math.max(0.0, 1.0 - Math.pow(Math.max(0, (hNorm - 0.35) / 0.65), 1.6));
+
+      for (let iz = 0; iz < GZ; iz++) {
+        for (let ix = 0; ix < GX; ix++) {
+          // Spatially varying wind + gentle swirl/updraft
+          const swirlX = Math.sin(iz * 0.28 + state.time * 0.45) * 0.35;
+          const swirlZ = Math.cos(ix * 0.28 + state.time * 0.38) * 0.35;
+          const updraft = (0.5 - Math.abs(hNorm - 0.45)) * 0.25 * Math.sin(ix * 0.35 + iz * 0.35 + state.time * 0.7);
+
+          const vx = (1.0 + swirlX) * advSpeed;
+          const vy = updraft * Math.max(0.2, state.windSpeed);
+          const vz = (0.42 + swirlZ) * advSpeed;
+
+          // Semi-Lagrangian backtrace
+          const backX = ix - vx * dt;
+          const backY = iy - vy * dt;
+          const backZ = iz - vz * dt;
+
+          let d = sampleGridTrilinear(backX, backY, backZ);
+
+          // Slow-evolving moisture/condensation source field (clouds form & dissipate organically)
+          const srcNoise = sampleNoise3D(
+            ix * 0.19 + state.time * 0.06,
+            iy * 0.37 + state.time * 0.04,
+            iz * 0.19 - state.time * 0.05
+          );
+          const localGen = (srcNoise * heightProfile - targetThresh * 0.48) * 2.6;
+
+          if (localGen > 0.02) {
+            d += Math.max(0.0, localGen - d) * Math.min(1.0, evo * 1.4);
+          } else {
+            // Gentle evaporation / dissipation in dry zones
+            d -= (0.14 + Math.max(0.0, -localGen) * 0.45) * evo;
+          }
+
+          // Top/bottom boundary fade
+          if (iy === 0 || iy === GY - 1) {
+            d *= Math.max(0.0, 1.0 - dt * 1.5);
+          }
+
+          densNext[(iy * GZ + iz) * GX + ix] = Math.max(0.0, Math.min(1.0, d));
+        }
+      }
+    }
+
+    const tmp = densCurr;
+    densCurr = densNext;
+    densNext = tmp;
+  }
+
+  function cloudDensity(px, py, pz) {
+    if (py < CLOUD_BOTTOM || py > CLOUD_TOP) return 0.0;
+
+    // Map world (px, pz) periodically onto [0..GX), [0..GZ)
+    const wx = ((px % WORLD_SPAN_X) + WORLD_SPAN_X) % WORLD_SPAN_X;
+    const wz = ((pz % WORLD_SPAN_Z) + WORLD_SPAN_Z) % WORLD_SPAN_Z;
+    const fx = wx / CELL_SIZE;
+    const fz = wz / CELL_SIZE;
+    const fy = ((py - CLOUD_BOTTOM) / CLOUD_HEIGHT) * (GY - 1);
+
+    const gridDens = sampleGridTrilinear(fx, fy, fz);
+    if (gridDens <= 0.02) return 0.0;
+
+    // Fine billowing noise detail modulated by simulated grid density
+    const detail = fbmDetail(px * 0.011, py * 0.015, pz * 0.011);
+    const shaped = gridDens * (0.55 + 0.85 * detail) - (1.0 - gridDens) * 0.22;
+    return shaped > 0.0 ? Math.min(1.0, shaped * 1.45) : 0.0;
+  }
+
+  function getSkyPalette() {
+    const elevRad = (state.sunElev * Math.PI) / 180;
+    const azimRad = (state.sunAzim * Math.PI) / 180;
+    const sunDir = {
+      x: Math.cos(elevRad) * Math.sin(azimRad),
+      y: Math.sin(elevRad),
+      z: Math.cos(elevRad) * Math.cos(azimRad)
+    };
+
+    if (state.preset === 'sunset') {
+      return {
+        sunDir,
+        zenith: [28, 52, 112],
+        horizon: [248, 126, 62],
+        sunColor: [255, 218, 145],
+        cloudBright: [255, 205, 148],
+        cloudShadow: [86, 74, 96],
+        ground: [32, 36, 48]
+      };
+    } else if (state.preset === 'twilight') {
+      return {
+        sunDir,
+        zenith: [14, 22, 54],
+        horizon: [92, 74, 138],
+        sunColor: [210, 175, 235],
+        cloudBright: [182, 168, 205],
+        cloudShadow: [42, 42, 62],
+        ground: [18, 22, 34]
+      };
+    }
+    return {
+      sunDir,
+      zenith: [36, 102, 205],
+      horizon: [158, 208, 248],
+      sunColor: [255, 252, 242],
+      cloudBright: [255, 255, 255],
+      cloudShadow: [118, 124, 134],
+      ground: [54, 78, 64]
+    };
+  }
+
+  function renderRaymarchedScene() {
+    const div = state.renderDiv;
+    const rw = Math.ceil(screenW / div);
+    const rh = Math.ceil(screenH / div);
+
+    const pal = getSkyPalette();
+    const sun = pal.sunDir;
+
+    const cosY = Math.cos(cam.yaw), sinY = Math.sin(cam.yaw);
+    const cosP = Math.cos(cam.pitch), sinP = Math.sin(cam.pitch);
+
+    const fwdX = sinY * cosP, fwdY = sinP, fwdZ = cosY * cosP;
+    const rightX = cosY, rightY = 0, rightZ = -sinY;
+    const upX = -sinY * sinP, upY = cosP, upZ = -cosY * sinP;
+
+    const aspect = screenW / screenH;
+    const fovScale = 0.85;
+
+    for (let gy = 0; gy < rh; gy++) {
+      const ndcY = (1.0 - 2.0 * ((gy * div + 0.5) / screenH)) * fovScale;
+      for (let gx = 0; gx < rw; gx++) {
+        const ndcX = (2.0 * ((gx * div + 0.5) / screenW) - 1.0) * aspect * fovScale;
+
+        let dx = fwdX + rightX * ndcX + upX * ndcY;
+        let dy = fwdY + rightY * ndcX + upY * ndcY;
+        let dz = fwdZ + rightZ * ndcX + upZ * ndcY;
+        const invLen = 1.0 / Math.hypot(dx, dy, dz);
+        dx *= invLen; dy *= invLen; dz *= invLen;
+
+        const sunDot = Math.max(0.0, dx * sun.x + dy * sun.y + dz * sun.z);
+        let bgR, bgG, bgB;
+        if (dy >= -0.02) {
+          const t = Math.pow(Math.max(0.0, Math.min(1.0, (dy + 0.02) / 0.85)), 0.65);
+          bgR = pal.horizon[0] + (pal.zenith[0] - pal.horizon[0]) * t;
+          bgG = pal.horizon[1] + (pal.zenith[1] - pal.horizon[1]) * t;
+          bgB = pal.horizon[2] + (pal.zenith[2] - pal.horizon[2]) * t;
+          const sunGlow = Math.pow(sunDot, 16) * 0.45 + Math.pow(sunDot, 180) * 0.9;
+          bgR += pal.sunColor[0] * sunGlow;
+          bgG += pal.sunColor[1] * sunGlow;
+          bgB += pal.sunColor[2] * sunGlow;
+        } else {
+          const gt = Math.min(1.0, (-dy - 0.02) * 4.0);
+          bgR = pal.horizon[0] + (pal.ground[0] - pal.horizon[0]) * gt;
+          bgG = pal.horizon[1] + (pal.ground[1] - pal.horizon[1]) * gt;
+          bgB = pal.horizon[2] + (pal.ground[2] - pal.horizon[2]) * gt;
+        }
+
+        let tStart = 0.0;
+        let tEnd = 0.0;
+        let hitLayer = false;
+
+        if (cam.y < CLOUD_BOTTOM) {
+          if (dy > 0.015) {
+            tStart = (CLOUD_BOTTOM - cam.y) / dy;
+            tEnd = Math.min(1800.0, (CLOUD_TOP - cam.y) / dy);
+            hitLayer = tEnd > tStart;
+          }
+        } else if (cam.y > CLOUD_TOP) {
+          if (dy < -0.015) {
+            tStart = (CLOUD_TOP - cam.y) / dy;
+            tEnd = Math.min(1800.0, (CLOUD_BOTTOM - cam.y) / dy);
+            hitLayer = tEnd > tStart;
+          }
+        } else {
+          tStart = 4.0;
+          if (Math.abs(dy) > 0.015) {
+            const tBound = dy > 0 ? (CLOUD_TOP - cam.y) / dy : (CLOUD_BOTTOM - cam.y) / dy;
+            tEnd = Math.min(950.0, tBound);
+          } else {
+            tEnd = 950.0;
+          }
+          hitLayer = tEnd > tStart;
+        }
+
+        let r = bgR, g = bgG, b = bgB;
+
+        if (hitLayer) {
+          const steps = 18;
+          const marchLen = Math.min(900.0, tEnd - tStart);
+          const dt = marchLen / steps;
+          let transmittance = 1.0;
+          let accumR = 0.0, accumG = 0.0, accumB = 0.0;
+          const phase = 0.72 + 0.65 * Math.pow(sunDot, 4);
+
+          for (let s = 0; s < steps; s++) {
+            if (transmittance < 0.03) break;
+            const t = tStart + (s + 0.5) * dt;
+            const px = cam.x + dx * t;
+            const py = cam.y + dy * t;
+            const pz = cam.z + dz * t;
+
+            const dens = cloudDensity(px, py, pz);
+            if (dens > 0.005) {
+              const lightDens = cloudDensity(
+                px + sun.x * 38.0,
+                py + sun.y * 38.0,
+                pz + sun.z * 38.0
+              );
+              const heightLight = 0.45 + 0.55 * Math.max(0.0, Math.min(1.0, (py - CLOUD_BOTTOM) / CLOUD_HEIGHT));
+              const lightEnergy = Math.exp(-lightDens * 2.1) * heightLight * phase;
+              const lit = Math.max(0.0, Math.min(1.15, lightEnergy));
+
+              const cR = pal.cloudShadow[0] + (pal.cloudBright[0] - pal.cloudShadow[0]) * lit;
+              const cG = pal.cloudShadow[1] + (pal.cloudBright[1] - pal.cloudShadow[1]) * lit;
+              const cB = pal.cloudShadow[2] + (pal.cloudBright[2] - pal.cloudShadow[2]) * lit;
+
+              const nearFade = Math.min(1.0, t / 28.0);
+              const alpha = (1.0 - Math.exp(-dens * dt * 0.032)) * nearFade;
+
+              accumR += transmittance * alpha * cR;
+              accumG += transmittance * alpha * cG;
+              accumB += transmittance * alpha * cB;
+              transmittance *= (1.0 - alpha);
+            }
+          }
+
+          const distFog = Math.min(0.60, tStart / 2600.0);
+          const cloudFinalR = accumR + transmittance * bgR;
+          const cloudFinalG = accumG + transmittance * bgG;
+          const cloudFinalB = accumB + transmittance * bgB;
+
+          r = cloudFinalR * (1.0 - distFog) + bgR * distFog;
+          g = cloudFinalG * (1.0 - distFog) + bgG * distFog;
+          b = cloudFinalB * (1.0 - distFog) + bgB * distFog;
+        }
+
+        const cr = r < 0 ? 0 : (r > 255 ? 255 : r);
+        const cg = g < 0 ? 0 : (g > 255 ? 255 : g);
+        const cb = b < 0 ? 0 : (b > 255 ? 255 : b);
+
+        const startY = gy * div;
+        const endY = Math.min(screenH, startY + div);
+        const startX = gx * div;
+        const endX = Math.min(screenW, startX + div);
+        for (let py = startY; py < endY; py++) {
+          let idx = (py * screenW + startX) * 3;
+          for (let px = startX; px < endX; px++) {
+            rawRgbBuffer[idx] = cr;
+            rawRgbBuffer[idx + 1] = cg;
+            rawRgbBuffer[idx + 2] = cb;
+            idx += 3;
+          }
+        }
+      }
+    }
+  }
+
+  function encodeHardwareVideo() {
+    const ditherStrength = state.ditherAmt;
+
+    if (mode === 'raw') {
+      for (let i = 0, p = 0, o = 0; i < screenW * screenH; i++, p += 3, o += 4) {
+        const r = rawRgbBuffer[p];
+        const g = rawRgbBuffer[p + 1];
+        const b = rawRgbBuffer[p + 2];
+        outPixels[o] = r;
+        outPixels[o + 1] = g;
+        outPixels[o + 2] = b;
+        outPixels[o + 3] = 255;
+        inspectData[i] = { r, g, b, label: `RGB(${r}, ${g}, ${b})` };
+      }
+      return;
+    }
+
+    if (mode === 'sc12') {
+      for (let y = 0; y < screenH; y++) {
+        const rowBay = (y & 3) << 2;
+        for (let x = 0; x < screenW; x += 4) {
+          const yVals = [0, 0, 0, 0];
+          const rVals = [0, 0, 0, 0];
+          const gVals = [0, 0, 0, 0];
+          const bVals = [0, 0, 0, 0];
+
+          let maxLuma = -1;
+          let anchorIdx = 0;
+
+          for (let k = 0; k < 4; k++) {
+            const idx = (y * screenW + x + k) * 3;
+            const r5 = rawRgbBuffer[idx] * (31 / 255);
+            const g5 = rawRgbBuffer[idx + 1] * (31 / 255);
+            const b5 = rawRgbBuffer[idx + 2] * (31 / 255);
+
+            rVals[k] = r5;
+            gVals[k] = g5;
+            bVals[k] = b5;
+
+            const yFloat = (4.0 * b5 + 2.0 * r5 + g5) / 7.0;
+            const bayer = BAYER4[rowBay + ((x + k) & 3)] * ditherStrength;
+            let yQ = Math.round(yFloat + bayer);
+            if (yQ < 0) yQ = 0;
+            if (yQ > 31) yQ = 31;
+            yVals[k] = yQ;
+
+            const luma = r5 * 0.3 + g5 * 0.59 + b5 * 0.11;
+            if (luma > maxLuma) {
+              maxLuma = luma;
+              anchorIdx = k;
+            }
+          }
+
+          const ancR = rVals[anchorIdx];
+          const ancG = gVals[anchorIdx];
+          const ancB = bVals[anchorIdx];
+          const ancY = (4.0 * ancB + 2.0 * ancR + ancG) / 7.0;
+
+          let jQ = Math.round(ancR - ancY);
+          let kQ = Math.round(ancG - ancY);
+          if (jQ < -32) jQ = -32; else if (jQ > 31) jQ = 31;
+          if (kQ < -32) kQ = -32; else if (kQ > 31) kQ = 31;
+
+          for (let k = 0; k < 4; k++) {
+            const yQ = yVals[k];
+            let rDec = yQ + jQ;
+            let gDec = yQ + kQ;
+            let bDec = (5 * yQ - 2 * jQ - kQ) / 4;
+
+            rDec = Math.max(0, Math.min(255, Math.round((rDec / 31) * 255)));
+            gDec = Math.max(0, Math.min(255, Math.round((gDec / 31) * 255)));
+            bDec = Math.max(0, Math.min(255, Math.round((bDec / 31) * 255)));
+
+            const pixIdx = y * screenW + x + k;
+            const o = pixIdx * 4;
+            outPixels[o] = rDec;
+            outPixels[o + 1] = gDec;
+            outPixels[o + 2] = bDec;
+            outPixels[o + 3] = 255;
+
+            inspectData[pixIdx] = {
+              r: rDec, g: gDec, b: bDec,
+              label: `BLK(${x >> 2},${y}) Y=${yQ} J=${jQ >= 0 ? '+' + jQ : jQ} K=${kQ >= 0 ? '+' + kQ : kQ}`
+            };
+          }
+        }
+      }
+      return;
+    }
+
+    if (mode === 'sc8') {
+      for (let y = 0; y < screenH; y++) {
+        const rowBay = (y & 3) << 2;
+        for (let x = 0; x < screenW; x++) {
+          const pixIdx = y * screenW + x;
+          const p = pixIdx * 3;
+          const o = pixIdx * 4;
+          const bayer = BAYER4[rowBay + (x & 3)] * ditherStrength;
+
+          let r3 = Math.round((rawRgbBuffer[p] / 255) * 7 + bayer);
+          let g3 = Math.round((rawRgbBuffer[p + 1] / 255) * 7 + bayer);
+          let b2 = Math.round((rawRgbBuffer[p + 2] / 255) * 3 + bayer);
+
+          r3 = r3 < 0 ? 0 : (r3 > 7 ? 7 : r3);
+          g3 = g3 < 0 ? 0 : (g3 > 7 ? 7 : g3);
+          b2 = b2 < 0 ? 0 : (b2 > 3 ? 3 : b2);
+
+          const rDec = Math.round((r3 / 7) * 255);
+          const gDec = Math.round((g3 / 7) * 255);
+          const bDec = Math.round((b2 / 3) * 255);
+
+          outPixels[o] = rDec;
+          outPixels[o + 1] = gDec;
+          outPixels[o + 2] = bDec;
+          outPixels[o + 3] = 255;
+
+          const byteVal = (g3 << 5) | (r3 << 2) | b2;
+          inspectData[pixIdx] = {
+            r: rDec, g: gDec, b: bDec,
+            label: `RGB332=0x${byteVal.toString(16).toUpperCase().padStart(2, '0')} (R:${r3}/7 G:${g3}/7 B:${b2}/3)`
+          };
+        }
+      }
+      return;
+    }
+
+    if (mode === 'tic80') {
+      const ditherScale = 56.0 * ditherStrength;
+      for (let y = 0; y < screenH; y++) {
+        const rowBay = (y & 3) << 2;
+        for (let x = 0; x < screenW; x++) {
+          const pixIdx = y * screenW + x;
+          const p = pixIdx * 3;
+          const o = pixIdx * 4;
+          const d = BAYER4[rowBay + (x & 3)] * ditherScale;
+
+          const tr = rawRgbBuffer[p] + d;
+          const tg = rawRgbBuffer[p + 1] + d;
+          const tb = rawRgbBuffer[p + 2] + d;
+
+          let bestIdx = 0;
+          let bestDist = 1e9;
+          for (let c = 0; c < 16; c++) {
+            const pal = SWEETIE16[c];
+            const dr = tr - pal.r;
+            const dg = tg - pal.g;
+            const db = tb - pal.b;
+            const dist = dr * dr * 0.30 + dg * dg * 0.59 + db * db * 0.11;
+            if (dist < bestDist) {
+              bestDist = dist;
+              bestIdx = c;
+            }
+          }
+
+          const chosen = SWEETIE16[bestIdx];
+          outPixels[o] = chosen.r;
+          outPixels[o + 1] = chosen.g;
+          outPixels[o + 2] = chosen.b;
+          outPixels[o + 3] = 255;
+
+          inspectData[pixIdx] = {
+            r: chosen.r, g: chosen.g, b: chosen.b,
+            label: `PAL #${bestIdx} ${chosen.name}`
+          };
+        }
+      }
+    }
+  }
+
+  // Input handling
+  const keys = {};
+  window.addEventListener('keydown', (e) => {
+    keys[e.code] = true;
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+      e.preventDefault();
+    }
+  });
+  window.addEventListener('keyup', (e) => {
+    keys[e.code] = false;
+  });
+
+  document.querySelectorAll('.pad-btn[data-key]').forEach((btn) => {
+    const code = btn.dataset.key;
+    const press = (e) => {
+      e.preventDefault();
+      keys[code] = true;
+      btn.classList.add('pressed');
+    };
+    const release = (e) => {
+      e.preventDefault();
+      keys[code] = false;
+      btn.classList.remove('pressed');
+    };
+    btn.addEventListener('pointerdown', press);
+    btn.addEventListener('pointerup', release);
+    btn.addEventListener('pointerleave', release);
+    btn.addEventListener('pointercancel', release);
+  });
+
+  let isDragging = false;
+  let lastPtrX = 0;
+  let lastPtrY = 0;
+
+  function updateInspector(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    const px = Math.floor(((clientX - rect.left) / rect.width) * screenW);
+    const py = Math.floor(((clientY - rect.top) / rect.height) * screenH);
+    if (px >= 0 && px < screenW && py >= 0 && py < screenH) {
+      const info = inspectData[py * screenW + px];
+      if (info) {
+        document.getElementById('inspSwatch').style.background = `rgb(${info.r},${info.g},${info.b})`;
+        document.getElementById('inspectorText').lastChild.textContent = ` (${px},${py}) → ${info.label}`;
+      }
+    }
+  }
+
+  canvasWrap.addEventListener('pointerdown', (e) => {
+    isDragging = true;
+    lastPtrX = e.clientX;
+    lastPtrY = e.clientY;
+    canvasWrap.setPointerCapture(e.pointerId);
+    updateInspector(e.clientX, e.clientY);
+  });
+
+  canvasWrap.addEventListener('pointermove', (e) => {
+    updateInspector(e.clientX, e.clientY);
+    if (!isDragging) return;
+    const dx = e.clientX - lastPtrX;
+    const dy = e.clientY - lastPtrY;
+    lastPtrX = e.clientX;
+    lastPtrY = e.clientY;
+
+    cam.yaw += dx * 0.0065;
+    cam.pitch = Math.max(-1.25, Math.min(1.25, cam.pitch - dy * 0.0065));
+  });
+
+  canvasWrap.addEventListener('pointerup', (e) => {
+    isDragging = false;
+    canvasWrap.releasePointerCapture(e.pointerId);
+  });
+
+  function updateMovement(dt) {
+    const moveSpeed = 135.0 * dt;
+    const rotSpeed = 1.6 * dt;
+
+    if (keys['ArrowLeft']) cam.yaw -= rotSpeed;
+    if (keys['ArrowRight']) cam.yaw += rotSpeed;
+    if (keys['ArrowUp']) cam.pitch = Math.min(1.25, cam.pitch + rotSpeed * 0.8);
+    if (keys['ArrowDown']) cam.pitch = Math.max(-1.25, cam.pitch - rotSpeed * 0.8);
+
+    const cosY = Math.cos(cam.yaw), sinY = Math.sin(cam.yaw);
+    const cosP = Math.cos(cam.pitch), sinP = Math.sin(cam.pitch);
+    const fwdX = sinY * cosP, fwdY = sinP, fwdZ = cosY * cosP;
+    const rightX = cosY, rightZ = -sinY;
+
+    if (keys['KeyW']) {
+      cam.x += fwdX * moveSpeed;
+      cam.y += fwdY * moveSpeed;
+      cam.z += fwdZ * moveSpeed;
+    }
+    if (keys['KeyS']) {
+      cam.x -= fwdX * moveSpeed;
+      cam.y -= fwdY * moveSpeed;
+      cam.z -= fwdZ * moveSpeed;
+    }
+    if (keys['KeyD']) {
+      cam.x += rightX * moveSpeed;
+      cam.z += rightZ * moveSpeed;
+    }
+    if (keys['KeyA']) {
+      cam.x -= rightX * moveSpeed;
+      cam.z -= rightZ * moveSpeed;
+    }
+    if (keys['KeyE'] || keys['Space']) {
+      cam.y += moveSpeed;
+    }
+    if (keys['KeyQ'] || keys['ShiftLeft'] || keys['ShiftRight']) {
+      cam.y -= moveSpeed;
+    }
+
+    cam.y = Math.max(15.0, Math.min(620.0, cam.y));
+  }
+
+  // UI Bindings
+  const subtitles = {
+    sc12: 'MSX2+ V9958 SCREEN 12 (256×212 / YJK 19,268 Colors / Advection Cloud Sim)',
+    sc8: 'MSX2 V9938/V9958 SCREEN 8 (256×212 / Fixed 256 Colors RGB332 / Advection Sim)',
+    tic80: 'TIC-80 Sweetie-16 Palette (256×212 Fixed / 16 Colors / Advection Cloud Sim)',
+    raw: '24-bit TrueColor Reference (256×212 / Advection Cloud Sim)'
+  };
+
+  document.querySelectorAll('#modeTabs .mode-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#modeTabs .mode-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      mode = btn.dataset.mode;
+      document.getElementById('specSubtitle').textContent = subtitles[mode];
+    });
+  });
+
+  document.querySelectorAll('#timePresets .small-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#timePresets .small-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.preset = btn.dataset.preset;
+      if (state.preset === 'day') {
+        state.sunElev = 28;
+      } else if (state.preset === 'sunset') {
+        state.sunElev = 6;
+      } else if (state.preset === 'twilight') {
+        state.sunElev = -2;
+      }
+      document.getElementById('sunElev').value = state.sunElev;
+      document.getElementById('valSunElev').textContent = `${state.sunElev}°`;
+    });
+  });
+
+  document.getElementById('sunElev').addEventListener('input', (e) => {
+    state.sunElev = Number(e.target.value);
+    document.getElementById('valSunElev').textContent = `${state.sunElev}°`;
+  });
+  document.getElementById('sunAzim').addEventListener('input', (e) => {
+    state.sunAzim = Number(e.target.value);
+    document.getElementById('valSunAzim').textContent = `${state.sunAzim}°`;
+  });
+  document.getElementById('coverage').addEventListener('input', (e) => {
+    state.coverage = Number(e.target.value) / 100;
+    document.getElementById('valCoverage').textContent = `${e.target.value}%`;
+  });
+  document.getElementById('windSpeed').addEventListener('input', (e) => {
+    state.windSpeed = Number(e.target.value) / 10;
+    document.getElementById('valWind').textContent = `${state.windSpeed.toFixed(1)}x`;
+  });
+  document.getElementById('evoRate').addEventListener('input', (e) => {
+    state.evoRate = Number(e.target.value) / 10;
+    document.getElementById('valEvo').textContent = `${state.evoRate.toFixed(1)}x`;
+  });
+  document.getElementById('ditherAmt').addEventListener('input', (e) => {
+    state.ditherAmt = Number(e.target.value) / 100;
+    document.getElementById('valDither').textContent = `${e.target.value}%`;
+  });
+  document.getElementById('renderDiv').addEventListener('input', (e) => {
+    state.renderDiv = Number(e.target.value);
+    document.getElementById('valScale').textContent = state.renderDiv === 1 ? '1/1 (フル精細)' : '1/2 (高速)';
+  });
+
+  document.getElementById('warpAbove').addEventListener('click', () => {
+    cam.y = 390;
+    cam.pitch = -0.24;
+  });
+  document.getElementById('warpInside').addEventListener('click', () => {
+    cam.y = 240;
+    cam.pitch = 0.04;
+  });
+  document.getElementById('warpBelow').addEventListener('click', () => {
+    cam.y = 115;
+    cam.pitch = 0.22;
+  });
+  document.getElementById('btnPause').addEventListener('click', (e) => {
+    state.paused = !state.paused;
+    e.target.textContent = state.paused ? 'PLAY' : 'PAUSE';
+    e.target.classList.toggle('active', state.paused);
+  });
+  document.getElementById('btnReset').addEventListener('click', () => {
+    cam.x = 0; cam.y = 115; cam.z = 0;
+    cam.yaw = 0.35; cam.pitch = 0.22;
+  });
+
+  // Main Animation Loop
+  let lastTime = performance.now();
+  let frameCount = 0;
+  let fpsTimer = 0;
+  let currentFps = 60;
+
+  function loop(now) {
+    const dt = Math.min(0.05, (now - lastTime) / 1000);
+    lastTime = now;
+
+    stepCloudSimulation(dt);
+    updateMovement(dt);
+
+    renderRaymarchedScene();
+    encodeHardwareVideo();
+    ctx.putImageData(imgData, 0, 0);
+
+    frameCount++;
+    fpsTimer += dt;
+    if (fpsTimer >= 0.5) {
+      currentFps = Math.round(frameCount / fpsTimer);
+      frameCount = 0;
+      fpsTimer = 0;
+    }
+
+    let zoneLabel = 'BELOW CLOUD';
+    if (cam.y >= CLOUD_BOTTOM && cam.y <= CLOUD_TOP) {
+      zoneLabel = 'INSIDE CLOUD!';
+    } else if (cam.y > CLOUD_TOP) {
+      zoneLabel = 'ABOVE CLOUD';
+    }
+
+    document.getElementById('hudTelemetry').innerHTML =
+      `ALT: ${Math.round(cam.y)}m (${zoneLabel})<br>` +
+      `POS: ${Math.round(cam.x)}, ${Math.round(cam.y)}, ${Math.round(cam.z)} | FPS: ${currentFps}`;
+
+    requestAnimationFrame(loop);
+  }
+
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

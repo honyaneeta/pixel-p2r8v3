@@ -1,0 +1,1433 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>MSX Volumetric Sea of Clouds (256x212)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #0b0e14;
+      color: #e2e8f0;
+      overflow-x: hidden;
+    }
+    .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    /* MSX Native Pixel Scaling */
+    #msxCanvas {
+      image-rendering: -moz-crisp-edges;
+      image-rendering: -webkit-crisp-edges;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      touch-action: none;
+    }
+    /* Custom Retro Range Sliders */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      background: #1e293b;
+      height: 6px;
+      border-radius: 999px;
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #38bdf8;
+      cursor: pointer;
+      border: 2px solid #0f172a;
+      box-shadow: 0 0 8px rgba(56, 189, 248, 0.5);
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #38bdf8;
+      cursor: pointer;
+      border: 2px solid #0f172a;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-between p-3 sm:p-5 select-none">
+
+  <!-- Header -->
+  <header class="w-full max-w-4xl flex flex-wrap items-center justify-between gap-2 mb-3">
+    <div class="flex items-center gap-2.5">
+      <div class="w-3 h-3 rounded-full bg-sky-400 animate-pulse shadow-[0_0_10px_#38bdf8]"></div>
+      <h1 class="text-base sm:text-lg font-bold tracking-tight text-slate-100">
+        MSX VOLUMETRIC FOG SIMULATOR
+      </h1>
+      <span class="mono text-xs px-2 py-0.5 rounded bg-slate-800 text-sky-400 border border-slate-700">
+        256×212
+      </span>
+    </div>
+    <div class="flex items-center gap-2 mono text-xs text-slate-400">
+      <span id="sceneBadge" class="px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800/60">
+        山間の雲海
+      </span>
+      <span id="modeBadge" class="px-2 py-0.5 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-800/60">
+        SCREEN 12 (YJK)
+      </span>
+      <span id="fpsCounter" class="text-emerald-400 font-bold">-- FPS</span>
+    </div>
+  </header>
+
+  <!-- Main Viewport & Controls Container -->
+  <main class="w-full max-w-4xl flex flex-col lg:flex-row gap-4 items-center lg:items-stretch justify-center flex-1">
+
+    <!-- Canvas Screen Frame -->
+    <div class="w-full lg:w-3/5 flex flex-col items-center justify-center">
+      <div class="relative w-full aspect-[256/212] bg-black rounded-xl overflow-hidden border-2 border-slate-700/80 shadow-[0_12px_40px_rgba(0,0,0,0.75)]">
+        <canvas id="msxCanvas" width="256" height="212" class="w-full h-full block cursor-grab active:cursor-grabbing"></canvas>
+        
+        <!-- Subtle OSD Hint -->
+        <div class="absolute bottom-2 left-2.5 right-2.5 flex justify-between items-center pointer-events-none text-[10px] sm:text-xs mono text-white/85 drop-shadow-[0_1px_2px_rgba(0,0,0,0.95)]">
+          <span>ドラッグ/スワイプで視点回転</span>
+          <span id="timeLabel">朝焼け (DAWN)</span>
+        </div>
+      </div>
+
+      <!-- Color Mode Selector Buttons -->
+      <div class="w-full grid grid-cols-3 gap-2 mt-3">
+        <button id="btnScr12" data-mode="scr12"
+          class="mode-btn p-2.5 rounded-xl text-xs sm:text-sm font-semibold border transition-all bg-sky-600/20 border-sky-400 text-sky-200 shadow-[0_0_15px_rgba(56,189,248,0.2)]">
+          <div>MSX2+ SCREEN 12</div>
+          <div class="text-[10px] opacity-75 mono mt-0.5">YJK 19,268色</div>
+        </button>
+        <button id="btnScr8" data-mode="scr8"
+          class="mode-btn p-2.5 rounded-xl text-xs sm:text-sm font-semibold border transition-all bg-slate-900/90 border-slate-700 text-slate-400 hover:border-slate-500">
+          <div>MSX2 SCREEN 8</div>
+          <div class="text-[10px] opacity-75 mono mt-0.5">RGB332 256色</div>
+        </button>
+        <button id="btnTic80" data-mode="tic80"
+          class="mode-btn p-2.5 rounded-xl text-xs sm:text-sm font-semibold border transition-all bg-slate-900/90 border-slate-700 text-slate-400 hover:border-slate-500">
+          <div>TIC-80</div>
+          <div class="text-[10px] opacity-75 mono mt-0.5">Sweetie-16 16色</div>
+        </button>
+      </div>
+    </div>
+
+    <!-- Control Panel -->
+    <aside class="w-full lg:w-2/5 bg-slate-900/90 border border-slate-800 rounded-xl p-4 flex flex-col justify-between gap-3 shadow-xl">
+      
+      <!-- Scene Selector -->
+      <div>
+        <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">シーン (TERRAIN / CITY)</div>
+        <div class="grid grid-cols-2 gap-2">
+          <button id="btnSceneMountain" data-scene="mountain"
+            class="scene-btn p-2.5 rounded-lg border text-xs font-bold flex items-center justify-center gap-1.5 transition-all bg-emerald-500/20 border-emerald-400 text-emerald-200 shadow-[0_0_12px_rgba(16,185,129,0.2)]">
+            <span>⛰️</span>
+            <span>山間の雲海</span>
+          </button>
+          <button id="btnSceneCity" data-scene="city"
+            class="scene-btn p-2.5 rounded-lg border text-xs font-bold flex items-center justify-center gap-1.5 transition-all bg-slate-950/80 border-slate-700 text-slate-400 hover:border-slate-500">
+            <span>🏙️</span>
+            <span>都心のビル群</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Time of Day Presets -->
+      <div>
+        <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">時間帯・ライティング</div>
+        <div class="grid grid-cols-4 gap-1.5">
+          <button data-time="dawn"
+            class="time-btn py-1.5 px-1 rounded-lg border text-[11px] font-semibold transition-all bg-amber-500/20 border-amber-400 text-amber-200">
+            朝焼け
+          </button>
+          <button data-time="day"
+            class="time-btn py-1.5 px-1 rounded-lg border text-[11px] font-semibold transition-all bg-slate-950/80 border-slate-700 text-slate-400 hover:border-slate-500">
+            昼間
+          </button>
+          <button data-time="sunset"
+            class="time-btn py-1.5 px-1 rounded-lg border text-[11px] font-semibold transition-all bg-slate-950/80 border-slate-700 text-slate-400 hover:border-slate-500">
+            夕暮れ
+          </button>
+          <button data-time="night"
+            class="time-btn py-1.5 px-1 rounded-lg border text-[11px] font-semibold transition-all bg-slate-950/80 border-slate-700 text-slate-400 hover:border-slate-500">
+            夜景・霧
+          </button>
+        </div>
+      </div>
+
+      <!-- Toggles & Camera Reset Row -->
+      <div class="grid grid-cols-3 gap-1.5">
+        <button id="btnDither"
+          class="p-2 rounded-lg border text-[11px] font-semibold flex items-center justify-between transition-all bg-emerald-500/15 border-emerald-500/60 text-emerald-300">
+          <span>ディザ</span>
+          <span id="ditherState" class="mono font-bold">ON</span>
+        </button>
+        <button id="btnOrbit"
+          class="p-2 rounded-lg border text-[11px] font-semibold flex items-center justify-between transition-all bg-sky-500/15 border-sky-500/60 text-sky-300">
+          <span>旋回</span>
+          <span id="orbitState" class="mono font-bold">ON</span>
+        </button>
+        <button id="btnResetCam"
+          class="p-2 rounded-lg border text-[11px] font-semibold text-center transition-all bg-slate-800/90 border-slate-700 text-slate-300 hover:border-slate-500 active:scale-95">
+          視点リセット
+        </button>
+      </div>
+
+      <!-- Sliders -->
+      <div class="space-y-3">
+        <!-- Sea of Clouds Altitude -->
+        <div>
+          <div class="flex justify-between text-xs mb-1">
+            <span class="text-slate-300 font-medium">霧・雲海の高さ</span>
+            <span id="valAltitude" class="mono text-sky-400">42%</span>
+          </div>
+          <input id="sliderAltitude" type="range" min="15" max="78" value="42" class="w-full" />
+        </div>
+
+        <!-- Fog Optical Density -->
+        <div>
+          <div class="flex justify-between text-xs mb-1">
+            <span class="text-slate-300 font-medium">霧の濃さ (散乱・減衰)</span>
+            <span id="valDensity" class="mono text-sky-400">1.35</span>
+          </div>
+          <input id="sliderDensity" type="range" min="35" max="260" value="135" class="w-full" />
+        </div>
+
+        <!-- Wind / Drift Speed -->
+        <div>
+          <div class="flex justify-between text-xs mb-1">
+            <span class="text-slate-300 font-medium">流れの速さ (風速)</span>
+            <span id="valWind" class="mono text-sky-400">1.0x</span>
+          </div>
+          <input id="sliderWind" type="range" min="0" max="30" value="10" class="w-full" />
+        </div>
+      </div>
+
+      <!-- Hardware Specs Info Box -->
+      <div id="hardwareNote" class="p-2.5 rounded-lg bg-slate-950/90 border border-slate-800 text-[11px] leading-relaxed text-slate-400">
+        <strong class="text-sky-300 block mb-0.5">MSX2+ V9958 SCREEN 12 モード</strong>
+        水平4ピクセル単位で色差成分(J, K)を平均共有し、各ピクセル固有の5bit輝度(Y)と合成するYJK方式を再現。雲海やビル街の霧の階調を滑らかに描写します。
+      </div>
+    </aside>
+
+  </main>
+
+  <script>
+    /**
+     * ============================================================================
+     * MSX VOLUMETRIC SEA OF CLOUDS & DOWNTOWN SKYSCRAPERS RENDERER (256 x 212)
+     * - Authentic CPU Volumetric Raymarching:
+     *   1) Mountain Valley: Ridged multifractal terrain + valley pooling fog
+     *   2) Downtown Skyscrapers: 2D Grid DDA raycast with setbacks, spires,
+     *      glowing office window grids, rooftop beacons, and street-canyon fog
+     * - Hardware-accurate Color Quantization:
+     *   1) MSX2+ SCREEN 12 (V9958 4-pixel horizontal YJK chroma sharing)
+     *   2) MSX2 SCREEN 8 (Fixed 256-color RGB332 + 4x4 Bayer Ordered Dithering)
+     *   3) TIC-80 (Sweetie-16 16-color palette + 4x4 Bayer Ordered Dithering)
+     * ============================================================================
+     */
+    (function () {
+      const WIDTH = 256;
+      const HEIGHT = 212;
+      const TOTAL_PIXELS = WIDTH * HEIGHT;
+
+      const canvas = document.getElementById('msxCanvas');
+      const ctx = canvas.getContext('2d', { alpha: false });
+      const imgData = ctx.createImageData(WIDTH, HEIGHT);
+      const outPixels = imgData.data;
+
+      // Floating-point RGB working buffer
+      const rgbBuffer = new Float32Array(TOTAL_PIXELS * 3);
+
+      // --------------------------------------------------------------------------
+      // 1. Precomputed Value Noise & Deterministic City Block Data
+      // --------------------------------------------------------------------------
+      const TABLE_SIZE = 256;
+      const TABLE_MASK = TABLE_SIZE - 1;
+      const perm = new Uint8Array(TABLE_SIZE * 2);
+      const gradX = new Float32Array(TABLE_SIZE);
+      const gradZ = new Float32Array(TABLE_SIZE);
+
+      let seed = 133742;
+      function rand() {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        return seed / 4294967296;
+      }
+
+      for (let i = 0; i < TABLE_SIZE; i++) {
+        perm[i] = i;
+        const angle = rand() * Math.PI * 2;
+        gradX[i] = Math.cos(angle);
+        gradZ[i] = Math.sin(angle);
+      }
+      for (let i = TABLE_SIZE - 1; i > 0; i--) {
+        const j = (rand() * (i + 1)) | 0;
+        const tmp = perm[i];
+        perm[i] = perm[j];
+        perm[j] = tmp;
+      }
+      for (let i = 0; i < TABLE_SIZE; i++) {
+        perm[i + TABLE_SIZE] = perm[i];
+      }
+
+      // Fast 2D Gradient Noise
+      function noise2D(x, z) {
+        const xi = Math.floor(x);
+        const zi = Math.floor(z);
+        const xf = x - xi;
+        const zf = z - zi;
+
+        const X = xi & TABLE_MASK;
+        const Z = zi & TABLE_MASK;
+
+        const u = xf * xf * (3.0 - 2.0 * xf);
+        const v = zf * zf * (3.0 - 2.0 * zf);
+
+        const aa = perm[perm[X] + Z];
+        const ab = perm[perm[X] + Z + 1];
+        const ba = perm[perm[X + 1] + Z];
+        const bb = perm[perm[X + 1] + Z + 1];
+
+        const d00 = gradX[aa] * xf + gradZ[aa] * zf;
+        const d10 = gradX[ba] * (xf - 1.0) + gradZ[ba] * zf;
+        const d01 = gradX[ab] * xf + gradZ[ab] * (zf - 1.0);
+        const d11 = gradX[bb] * (xf - 1.0) + gradZ[bb] * (zf - 1.0);
+
+        const nx0 = d00 + u * (d10 - d00);
+        const nx1 = d01 + u * (d11 - d01);
+        return nx0 + v * (nx1 - nx0);
+      }
+
+      // Integer cell hash for procedural skyscraper generation
+      function cellHash(ix, iz) {
+        let h = (ix * 374761393 + iz * 668265263) ^ 0x5bf03635;
+        h = Math.imul(h ^ (h >>> 13), 1274126177);
+        return ((h ^ (h >>> 16)) >>> 0) / 4294967296.0;
+      }
+
+      // --------------------------------------------------------------------------
+      // 2A. Mountain Valley Heightfield & Normal
+      // --------------------------------------------------------------------------
+      function getTerrainHeight(x, z) {
+        const sx = x * 0.042;
+        const sz = z * 0.042;
+
+        // Basin depression in the center so fog visibly pools like a mountain lake
+        const distSq = x * x + z * z;
+        const basinFactor = 1.0 - 0.38 * Math.exp(-distSq * 0.00045);
+
+        let n1 = 1.0 - Math.abs(noise2D(sx, sz) * 1.45);
+        n1 = Math.max(0.0, n1);
+        n1 = n1 * n1;
+
+        const rx = sx * 1.62 - sz * 1.18 + 3.7;
+        const rz = sx * 1.18 + sz * 1.62 + 8.3;
+        let n2 = 1.0 - Math.abs(noise2D(rx, rz) * 1.4);
+        n2 = Math.max(0.0, n2);
+        n2 = n2 * n2 * 0.48;
+
+        const qx = rx * 2.15 + 11.2;
+        const qz = rz * 2.15 + 4.9;
+        const n3 = (noise2D(qx, qz) * 0.5 + 0.5) * 0.16;
+
+        return (n1 * 18.5 + n2 * 14.0 + n3 * 8.0) * basinFactor;
+      }
+
+      function getTerrainNormal(x, z, eps) {
+        const hL = getTerrainHeight(x - eps, z);
+        const hR = getTerrainHeight(x + eps, z);
+        const hD = getTerrainHeight(x, z - eps);
+        const hU = getTerrainHeight(x, z + eps);
+        const nx = hL - hR;
+        const ny = 2.0 * eps;
+        const nz = hD - hU;
+        const invLen = 1.0 / Math.sqrt(nx * nx + ny * ny + nz * nz);
+        return [nx * invLen, ny * invLen, nz * invLen];
+      }
+
+      // --------------------------------------------------------------------------
+      // 2B. Downtown Skyscrapers Procedural City Grid & Exact 2D-DDA Raycast
+      // --------------------------------------------------------------------------
+      const CITY_CELL = 5.6; // World size of each city block (building + street)
+
+      // Returns skyscraper architectural parameters for grid cell (gx, gz)
+      function getBuildingSpec(gx, gz) {
+        // Leave two wide main avenues (x=0 and z=0 corridors) where fog rivers flow visibly
+        if (gx === 0 || gz === 0) {
+          return { hasBuilding: false, height: 0.0 };
+        }
+
+        const h1 = cellHash(gx, gz);
+        // ~14% chance of an open plaza / park pocket in the city
+        if (h1 < 0.14) {
+          return { hasBuilding: false, height: 0.0 };
+        }
+
+        const h2 = cellHash(gx + 97, gz - 53);
+        const h3 = cellHash(gx - 31, gz + 181);
+
+        // Downtown core cluster (near origin) has towering supertalls piercing the fog
+        const distFromCore = Math.sqrt(gx * gx + gz * gz);
+        const coreBoost = Math.exp(-distFromCore * 0.14);
+
+        // Base tower height in [4.5, 25.5]
+        let height = 4.2 + Math.pow(h1, 1.35) * 14.5 + coreBoost * (6.0 + h2 * 7.5);
+
+        // Half-width of main shaft inside the CITY_CELL (leaves street canyons between towers)
+        const halfW = CITY_CELL * (0.29 + h2 * 0.12);
+        const halfD = CITY_CELL * (0.29 + h3 * 0.12);
+
+        // Tiered setback crown for tall skyscrapers
+        const hasSetback = height > 12.5 && h3 > 0.35;
+        const setbackY = height * 0.72;
+        const setbackScale = 0.68;
+
+        // Rooftop spire / antenna on supertalls
+        const hasSpire = height > 16.5 && h2 > 0.55;
+        const spireTop = hasSpire ? height + 2.8 + h3 * 2.2 : height;
+
+        // Facade style: 0 = warm glass/granite, 1 = cool blue curtain wall, 2 = dark steel
+        const style = (h3 * 3) | 0;
+
+        return {
+          hasBuilding: true,
+          height,
+          halfW,
+          halfD,
+          hasSetback,
+          setbackY,
+          setbackScale,
+          hasSpire,
+          spireTop,
+          style,
+          seed: h1 * 100.0 + h2 * 37.0
+        };
+      }
+
+      // Ray-AABB intersection helper for a box centered at (cx, cz) with Y in [yMin, yMax]
+      function intersectBox(roX, roY, roZ, rdX, rdY, rdZ, cx, cz, halfW, halfD, yMin, yMax) {
+        const minX = cx - halfW, maxX = cx + halfW;
+        const minZ = cz - halfD, maxZ = cz + halfD;
+
+        let tMin = 0.0;
+        let tMax = 1e9;
+        let hitAxis = 0; // 0: X, 1: Y, 2: Z
+        let hitSign = 1.0;
+
+        // X slab
+        if (Math.abs(rdX) < 1e-7) {
+          if (roX < minX || roX > maxX) return null;
+        } else {
+          const invX = 1.0 / rdX;
+          let t1 = (minX - roX) * invX;
+          let t2 = (maxX - roX) * invX;
+          let s = -1.0;
+          if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; s = 1.0; }
+          if (t1 > tMin) { tMin = t1; hitAxis = 0; hitSign = s; }
+          if (t2 < tMax) tMax = t2;
+          if (tMin > tMax) return null;
+        }
+
+        // Y slab
+        if (Math.abs(rdY) < 1e-7) {
+          if (roY < yMin || roY > yMax) return null;
+        } else {
+          const invY = 1.0 / rdY;
+          let t1 = (yMin - roY) * invY;
+          let t2 = (yMax - roY) * invY;
+          let s = -1.0;
+          if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; s = 1.0; }
+          if (t1 > tMin) { tMin = t1; hitAxis = 1; hitSign = s; }
+          if (t2 < tMax) tMax = t2;
+          if (tMin > tMax) return null;
+        }
+
+        // Z slab
+        if (Math.abs(rdZ) < 1e-7) {
+          if (roZ < minZ || roZ > maxZ) return null;
+        } else {
+          const invZ = 1.0 / rdZ;
+          let t1 = (minZ - roZ) * invZ;
+          let t2 = (maxZ - roZ) * invZ;
+          let s = -1.0;
+          if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; s = 1.0; }
+          if (t1 > tMin) { tMin = t1; hitAxis = 2; hitSign = s; }
+          if (t2 < tMax) tMax = t2;
+          if (tMin > tMax) return null;
+        }
+
+        if (tMax < 0.0) return null;
+        return { t: tMin, axis: hitAxis, sign: hitSign };
+      }
+
+      // Fast 2D DDA grid traversal through the skyscraper city + ground plane (y = 0)
+      function traceCityScene(roX, roY, roZ, rdX, rdY, rdZ, maxDist) {
+        // Distance to ground plane y = 0
+        let tGround = rdY < -1e-5 ? -roY / rdY : 1e9;
+        if (tGround < 0.0) tGround = 1e9;
+
+        const maxTrace = Math.min(maxDist, tGround);
+
+        // Start cell in grid coordinates
+        let gx = Math.floor(roX / CITY_CELL);
+        let gz = Math.floor(roZ / CITY_CELL);
+
+        const stepX = rdX >= 0 ? 1 : -1;
+        const stepZ = rdZ >= 0 ? 1 : -1;
+
+        const invRdX = Math.abs(rdX) > 1e-7 ? Math.abs(CITY_CELL / rdX) : 1e9;
+        const invRdZ = Math.abs(rdZ) > 1e-7 ? Math.abs(CITY_CELL / rdZ) : 1e9;
+
+        let tMaxX = rdX >= 0
+          ? ((gx + 1) * CITY_CELL - roX) / (Math.abs(rdX) > 1e-7 ? rdX : 1e-7)
+          : (roX - gx * CITY_CELL) / (Math.abs(rdX) > 1e-7 ? -rdX : 1e-7);
+        let tMaxZ = rdZ >= 0
+          ? ((gz + 1) * CITY_CELL - roZ) / (Math.abs(rdZ) > 1e-7 ? rdZ : 1e-7)
+          : (roZ - gz * CITY_CELL) / (Math.abs(rdZ) > 1e-7 ? -rdZ : 1e-7);
+
+        let tCurr = 0.0;
+        const maxSteps = 34;
+
+        for (let i = 0; i < maxSteps; i++) {
+          if (tCurr > maxTrace) break;
+
+          // If ray is above tallest possible building (30.0) and ascending, stop checking buildings
+          const currY = roY + rdY * tCurr;
+          if (currY > 30.0 && rdY >= 0.0) break;
+
+          const bld = getBuildingSpec(gx, gz);
+          if (bld.hasBuilding) {
+            const cx = (gx + 0.5) * CITY_CELL;
+            const cz = (gz + 0.5) * CITY_CELL;
+
+            let bestHit = null;
+            let hitPart = 0; // 0 = main shaft, 1 = setback crown, 2 = spire
+
+            if (bld.hasSetback) {
+              // Lower main shaft
+              const hLower = intersectBox(
+                roX, roY, roZ, rdX, rdY, rdZ,
+                cx, cz, bld.halfW, bld.halfD, 0.0, bld.setbackY
+              );
+              if (hLower && hLower.t >= 2.0) {
+                bestHit = hLower;
+                hitPart = 0;
+              }
+              // Upper setback tower
+              const hUpper = intersectBox(
+                roX, roY, roZ, rdX, rdY, rdZ,
+                cx, cz, bld.halfW * bld.setbackScale, bld.halfD * bld.setbackScale,
+                bld.setbackY, bld.height
+              );
+              if (hUpper && hUpper.t >= 2.0 && (!bestHit || hUpper.t < bestHit.t)) {
+                bestHit = hUpper;
+                hitPart = 1;
+              }
+            } else {
+              const hMain = intersectBox(
+                roX, roY, roZ, rdX, rdY, rdZ,
+                cx, cz, bld.halfW, bld.halfD, 0.0, bld.height
+              );
+              if (hMain && hMain.t >= 2.0) {
+                bestHit = hMain;
+                hitPart = 0;
+              }
+            }
+
+            // Rooftop spire / antenna mast
+            if (bld.hasSpire) {
+              const hSpire = intersectBox(
+                roX, roY, roZ, rdX, rdY, rdZ,
+                cx, cz, 0.14, 0.14, bld.height, bld.spireTop
+              );
+              if (hSpire && hSpire.t >= 2.0 && (!bestHit || hSpire.t < bestHit.t)) {
+                bestHit = hSpire;
+                hitPart = 2;
+              }
+            }
+
+            if (bestHit && bestHit.t <= maxTrace) {
+              return {
+                hitType: 'building',
+                t: bestHit.t,
+                axis: bestHit.axis,
+                sign: bestHit.sign,
+                hitPart,
+                cx,
+                cz,
+                gx,
+                gz,
+                bld
+              };
+            }
+          }
+
+          // Advance DDA to next city cell
+          if (tMaxX < tMaxZ) {
+            tCurr = tMaxX;
+            tMaxX += invRdX;
+            gx += stepX;
+          } else {
+            tCurr = tMaxZ;
+            tMaxZ += invRdZ;
+            gz += stepZ;
+          }
+        }
+
+        if (tGround < maxDist) {
+          return {
+            hitType: 'ground',
+            t: tGround
+          };
+        }
+
+        return null;
+      }
+
+      // --------------------------------------------------------------------------
+      // 3. Volumetric Fog Density Field (Shared Physics + Scene-specific Pooling)
+      // --------------------------------------------------------------------------
+      function sampleFogDensity(x, y, z, cloudCeiling, cloudFloor, densityScale, windOffset, isCity) {
+        if (y > cloudCeiling + 1.8) return 0.0;
+
+        // Animated billowing cloud top & canyon eddies
+        const wx = x * 0.095 + windOffset;
+        const wz = z * 0.095 + windOffset * 0.45;
+        const wave1 = noise2D(wx, wz);
+        const wave2 = noise2D(wx * 2.3 - windOffset * 0.6, wz * 2.3 + 5.1) * 0.45;
+        const localTop = cloudCeiling + (wave1 + wave2) * (isCity ? 1.15 : 1.45);
+
+        if (y >= localTop) return 0.0;
+
+        const depthBelowTop = localTop - y;
+        const topEnvelope = Math.min(1.0, depthBelowTop * 0.62);
+
+        // Denser pooling near street/valley floor
+        const valleyBoost = 0.68 + 0.58 * Math.max(0.0, Math.min(1.0, (cloudCeiling - y) / Math.max(2.0, cloudCeiling - cloudFloor)));
+
+        // Internal cellular wisps
+        const wisp = 0.72 + 0.38 * noise2D(wx * 1.7 + y * 0.25, wz * 1.7 - y * 0.2);
+
+        return Math.max(0.0, topEnvelope * valleyBoost * wisp * densityScale);
+      }
+
+      // --------------------------------------------------------------------------
+      // 4. Hardware Color Modes & Dithering Tables
+      // --------------------------------------------------------------------------
+      const BAYER_4X4 = new Float32Array([
+         0/16 - 0.5,  8/16 - 0.5,  2/16 - 0.5, 10/16 - 0.5,
+        12/16 - 0.5,  4/16 - 0.5, 14/16 - 0.5,  6/16 - 0.5,
+         3/16 - 0.5, 11/16 - 0.5,  1/16 - 0.5,  9/16 - 0.5,
+        15/16 - 0.5,  7/16 - 0.5, 13/16 - 0.5,  5/16 - 0.5
+      ]);
+
+      const SWEETIE_16_HEX = [
+        0x1a1c2c, 0x5d275d, 0xb13e53, 0xef7d57,
+        0xffcd75, 0xa7f070, 0x38b764, 0x257179,
+        0x29366f, 0x3b5dc9, 0x41a6f6, 0x73eff7,
+        0xf4f4f4, 0x94b0c2, 0x566c86, 0x333c57
+      ];
+      const SWEETIE_16 = SWEETIE_16_HEX.map(hex => [
+        (hex >> 16) & 0xff,
+        (hex >> 8) & 0xff,
+        hex & 0xff
+      ]);
+
+      function clamp255(v) {
+        return v < 0 ? 0 : (v > 255 ? 255 : v);
+      }
+
+      // MODE A: MSX2+ SCREEN 12 (V9958 YJK 19,268 colors, 4-pixel horizontal chroma sharing)
+      function encodeScreen12YJK(useDither) {
+        for (let y = 0; y < HEIGHT; y++) {
+          const rowStart = y * WIDTH;
+          const bayerRow = (y & 3) << 2;
+
+          for (let x = 0; x < WIDTH; x += 4) {
+            let sumJ = 0;
+            let sumK = 0;
+            const y5Arr = [0, 0, 0, 0];
+
+            for (let p = 0; p < 4; p++) {
+              const pxIdx = rowStart + x + p;
+              const bufIdx = pxIdx * 3;
+              const dither = useDither ? BAYER_4X4[bayerRow + ((x + p) & 3)] * 7.5 : 0.0;
+
+              const r = clamp255(rgbBuffer[bufIdx] * 255.0 + dither);
+              const g = clamp255(rgbBuffer[bufIdx + 1] * 255.0 + dither);
+              const b = clamp255(rgbBuffer[bufIdx + 2] * 255.0 + dither);
+
+              const r5 = r * (31.0 / 255.0);
+              const g5 = g * (31.0 / 255.0);
+              const b5 = b * (31.0 / 255.0);
+
+              const y5 = Math.max(0, Math.min(31, Math.round((4.0 * b5 + 2.0 * r5 + g5) / 7.0)));
+              y5Arr[p] = y5;
+
+              sumJ += (r5 - y5);
+              sumK += (g5 - y5);
+            }
+
+            const avgJ = Math.max(-32, Math.min(31, Math.round(sumJ * 0.25)));
+            const avgK = Math.max(-32, Math.min(31, Math.round(sumK * 0.25)));
+
+            for (let p = 0; p < 4; p++) {
+              const y5 = y5Arr[p];
+              const r5 = y5 + avgJ;
+              const g5 = y5 + avgK;
+              const b5 = (4 * y5 - 2 * avgJ - avgK) * 0.25;
+
+              const outIdx = (rowStart + x + p) * 4;
+              outPixels[outIdx]     = clamp255(Math.round(r5 * (255.0 / 31.0)));
+              outPixels[outIdx + 1] = clamp255(Math.round(g5 * (255.0 / 31.0)));
+              outPixels[outIdx + 2] = clamp255(Math.round(b5 * (255.0 / 31.0)));
+              outPixels[outIdx + 3] = 255;
+            }
+          }
+        }
+      }
+
+      // MODE B: MSX2 SCREEN 8 (Fixed 256-color RGB332 palette + Bayer dithering)
+      function encodeScreen8RGB332(useDither) {
+        for (let y = 0; y < HEIGHT; y++) {
+          const rowStart = y * WIDTH;
+          const bayerRow = (y & 3) << 2;
+
+          for (let x = 0; x < WIDTH; x++) {
+            const pxIdx = rowStart + x;
+            const bufIdx = pxIdx * 3;
+            const bVal = useDither ? BAYER_4X4[bayerRow + (x & 3)] : 0.0;
+
+            const r = Math.max(0, Math.min(1, rgbBuffer[bufIdx]     + bVal * (1.0 / 7.0)));
+            const g = Math.max(0, Math.min(1, rgbBuffer[bufIdx + 1] + bVal * (1.0 / 7.0)));
+            const b = Math.max(0, Math.min(1, rgbBuffer[bufIdx + 2] + bVal * (1.0 / 3.0)));
+
+            const r3 = Math.round(r * 7.0);
+            const g3 = Math.round(g * 7.0);
+            const b2 = Math.round(b * 3.0);
+
+            const outIdx = pxIdx * 4;
+            outPixels[outIdx]     = Math.round((r3 * 255) / 7);
+            outPixels[outIdx + 1] = Math.round((g3 * 255) / 7);
+            outPixels[outIdx + 2] = Math.round((b2 * 255) / 3);
+            outPixels[outIdx + 3] = 255;
+          }
+        }
+      }
+
+      // MODE C: TIC-80 (Sweetie-16 16-color palette + Bayer dithering)
+      function encodeTIC80Sweetie16(useDither) {
+        for (let y = 0; y < HEIGHT; y++) {
+          const rowStart = y * WIDTH;
+          const bayerRow = (y & 3) << 2;
+
+          for (let x = 0; x < WIDTH; x++) {
+            const pxIdx = rowStart + x;
+            const bufIdx = pxIdx * 3;
+            const dither = useDither ? BAYER_4X4[bayerRow + (x & 3)] * 42.0 : 0.0;
+
+            const r = clamp255(rgbBuffer[bufIdx] * 255.0 + dither);
+            const g = clamp255(rgbBuffer[bufIdx + 1] * 255.0 + dither);
+            const b = clamp255(rgbBuffer[bufIdx + 2] * 255.0 + dither);
+
+            let bestDist = 1e9;
+            let bestCol = SWEETIE_16[0];
+            for (let i = 0; i < 16; i++) {
+              const pal = SWEETIE_16[i];
+              const dr = r - pal[0];
+              const dg = g - pal[1];
+              const db = b - pal[2];
+              const dist = dr * dr * 0.30 + dg * dg * 0.59 + db * db * 0.11;
+              if (dist < bestDist) {
+                bestDist = dist;
+                bestCol = pal;
+              }
+            }
+
+            const outIdx = pxIdx * 4;
+            outPixels[outIdx]     = bestCol[0];
+            outPixels[outIdx + 1] = bestCol[1];
+            outPixels[outIdx + 2] = bestCol[2];
+            outPixels[outIdx + 3] = 255;
+          }
+        }
+      }
+
+      // --------------------------------------------------------------------------
+      // 5. Simulation State & Lighting Presets
+      // --------------------------------------------------------------------------
+      const TIME_PRESETS = {
+        dawn: {
+          label: '朝焼け (DAWN)',
+          sunElevDeg: 14,
+          sunAzimuth: 0.75,
+          skyZenith: [0.09, 0.16, 0.36],
+          skyHoriz:  [0.98, 0.52, 0.36],
+          sunCol:    [1.22, 0.70, 0.44],
+          cloudLit:  [1.12, 0.82, 0.70],
+          cloudAmb:  [0.24, 0.28, 0.44],
+          windowGlow: 0.55,
+          isNight: false
+        },
+        day: {
+          label: '晴天昼間 (DAYTIME)',
+          sunElevDeg: 46,
+          sunAzimuth: 0.95,
+          skyZenith: [0.14, 0.38, 0.78],
+          skyHoriz:  [0.64, 0.80, 0.96],
+          sunCol:    [1.08, 1.02, 0.94],
+          cloudLit:  [1.04, 1.02, 1.00],
+          cloudAmb:  [0.36, 0.44, 0.60],
+          windowGlow: 0.08,
+          isNight: false
+        },
+        sunset: {
+          label: '夕暮れ (SUNSET)',
+          sunElevDeg: 9,
+          sunAzimuth: 2.35,
+          skyZenith: [0.14, 0.10, 0.28],
+          skyHoriz:  [0.98, 0.36, 0.24],
+          sunCol:    [1.25, 0.52, 0.28],
+          cloudLit:  [1.10, 0.64, 0.52],
+          cloudAmb:  [0.22, 0.18, 0.34],
+          windowGlow: 0.82,
+          isNight: false
+        },
+        night: {
+          label: '夜景・夜霧 (NIGHT FOG)',
+          sunElevDeg: 28,
+          sunAzimuth: 1.15,
+          skyZenith: [0.02, 0.04, 0.10],
+          skyHoriz:  [0.09, 0.15, 0.28],
+          sunCol:    [0.26, 0.36, 0.58], // Cool moonlight
+          cloudLit:  [0.28, 0.36, 0.52],
+          cloudAmb:  [0.08, 0.11, 0.20],
+          windowGlow: 1.35,
+          isNight: true
+        }
+      };
+
+      const state = {
+        scene: 'mountain', // 'mountain' | 'city'
+        mode: 'scr12',     // 'scr12' | 'scr8' | 'tic80'
+        timeKey: 'dawn',
+        dither: true,
+        autoOrbit: true,
+        yaw: 0.65,
+        pitch: 0.34,
+        cloudAltitude: 0.42,
+        fogDensity: 1.35,
+        windSpeed: 1.0,
+        windTime: 0.0,
+        clockTime: 0.0
+      };
+
+      // --------------------------------------------------------------------------
+      // 6. CPU Volumetric Raymarching Engine (256x212)
+      // --------------------------------------------------------------------------
+      function renderFrame(dt) {
+        if (state.autoOrbit) {
+          state.yaw += dt * 0.13;
+        }
+        state.windTime += dt * state.windSpeed * 0.45;
+        state.clockTime += dt;
+
+        const isCity = state.scene === 'city';
+        const preset = TIME_PRESETS[state.timeKey];
+
+        const sunElevRad = (preset.sunElevDeg * Math.PI) / 180.0;
+        const sunDirX = Math.cos(sunElevRad) * Math.cos(preset.sunAzimuth);
+        const sunDirY = Math.sin(sunElevRad);
+        const sunDirZ = Math.cos(sunElevRad) * Math.sin(preset.sunAzimuth);
+
+        const [skyZenithR, skyZenithG, skyZenithB] = preset.skyZenith;
+        const [skyHorizR, skyHorizG, skyHorizB] = preset.skyHoriz;
+        const [sunColR, sunColG, sunColB] = preset.sunCol;
+        const [cloudLitR, cloudLitG, cloudLitB] = preset.cloudLit;
+        const [cloudAmbR, cloudAmbG, cloudAmbB] = preset.cloudAmb;
+
+        // Sea of clouds / urban fog elevation range
+        const cloudCeiling = (isCity ? 2.2 : 3.2) + state.cloudAltitude * 16.5;
+        const cloudFloor = 0.0;
+
+        // Camera position orbiting above the mountain basin or downtown skyline
+        const camDist = isCity ? 36.0 : 38.0;
+        const camX = Math.cos(state.yaw) * camDist;
+        const camZ = Math.sin(state.yaw) * camDist;
+        const camY = (isCity ? 18.5 : 17.5) + Math.sin(state.pitch) * 14.0;
+
+        const targetX = 0.0;
+        const targetY = isCity ? 7.2 : 6.2;
+        const targetZ = 0.0;
+
+        // Camera orthonormal basis
+        let fwdX = targetX - camX;
+        let fwdY = targetY - camY;
+        let fwdZ = targetZ - camZ;
+        const fwdLen = Math.sqrt(fwdX * fwdX + fwdY * fwdY + fwdZ * fwdZ);
+        fwdX /= fwdLen; fwdY /= fwdLen; fwdZ /= fwdLen;
+
+        let rightX = -fwdZ;
+        let rightY = 0.0;
+        let rightZ = fwdX;
+        const rightLen = Math.sqrt(rightX * rightX + rightZ * rightZ);
+        rightX /= rightLen; rightZ /= rightLen;
+
+        const upX = rightY * fwdZ - rightZ * fwdY;
+        const upY = rightZ * fwdX - rightX * fwdZ;
+        const upZ = rightX * fwdY - rightY * fwdX;
+
+        const aspect = WIDTH / HEIGHT;
+        const fovScale = 0.72;
+        const maxDist = 88.0;
+
+        // Blinking aviation beacon phase for skyscraper spires
+        const beaconPulse = 0.5 + 0.5 * Math.sin(state.clockTime * 4.2);
+
+        for (let py = 0; py < HEIGHT; py++) {
+          const ndcY = (1.0 - (2.0 * (py + 0.5)) / HEIGHT) * fovScale;
+          const rowOffset = py * WIDTH;
+
+          for (let px = 0; px < WIDTH; px++) {
+            const ndcX = (((2.0 * (px + 0.5)) / WIDTH) - 1.0) * aspect * fovScale;
+
+            let rdx = fwdX + rightX * ndcX + upX * ndcY;
+            let rdy = fwdY + rightY * ndcX + upY * ndcY;
+            let rdz = fwdZ + rightZ * ndcX + upZ * ndcY;
+            const invR = 1.0 / Math.sqrt(rdx * rdx + rdy * rdy + rdz * rdz);
+            rdx *= invR; rdy *= invR; rdz *= invR;
+
+            // Sky gradient + sun/moon glow
+            const skyT = Math.max(0.0, Math.min(1.0, rdy * 1.45 + 0.12));
+            const invSkyT = 1.0 - skyT;
+            const skyGrad = invSkyT * invSkyT;
+
+            let bgR = skyZenithR * (1.0 - skyGrad) + skyHorizR * skyGrad;
+            let bgG = skyZenithG * (1.0 - skyGrad) + skyHorizG * skyGrad;
+            let bgB = skyZenithB * (1.0 - skyGrad) + skyHorizB * skyGrad;
+
+            const sunCos = Math.max(0.0, rdx * sunDirX + rdy * sunDirY + rdz * sunDirZ);
+            const haloIntensity = preset.isNight ? 0.25 : 0.42;
+            const discIntensity = preset.isNight ? 0.75 : 0.95;
+            const sunHalo = Math.pow(sunCos, 10.0) * haloIntensity + Math.pow(sunCos, 96.0) * discIntensity;
+            bgR += sunColR * sunHalo;
+            bgG += sunColG * sunHalo;
+            bgB += sunColB * sunHalo;
+
+            // Forward scattering phase boost
+            const forwardPhase = 0.75 + (preset.isNight ? 0.25 : 0.55) * Math.pow(sunCos, 4.0);
+
+            let finalR = bgR;
+            let finalG = bgG;
+            let finalB = bgB;
+
+            if (!isCity) {
+              // ================================================================
+              // SCENE 1: MOUNTAIN VALLEY (Heightfield + Volumetric Sea of Clouds)
+              // ================================================================
+              let t = 2.0;
+              let transmittance = 1.0;
+              let scatterR = 0.0, scatterG = 0.0, scatterB = 0.0;
+              let hitTerrain = false;
+              let hitX = 0.0, hitY = 0.0, hitZ = 0.0;
+
+              while (t < maxDist && transmittance > 0.025) {
+                const rx = camX + rdx * t;
+                const ry = camY + rdy * t;
+                const rz = camZ + rdz * t;
+
+                if (ry > 25.0 && rdy > 0.0) break;
+
+                const terrainH = getTerrainHeight(rx, rz);
+                const heightAboveGround = ry - terrainH;
+
+                let step = 0.65 + t * 0.022;
+                if (heightAboveGround < 3.5) {
+                  step = Math.max(0.28, heightAboveGround * 0.42);
+                }
+
+                if (heightAboveGround <= 0.04) {
+                  const prevT = Math.max(2.0, t - step * 0.5);
+                  hitX = camX + rdx * prevT;
+                  hitZ = camZ + rdz * prevT;
+                  hitY = getTerrainHeight(hitX, hitZ);
+                  hitTerrain = true;
+                  break;
+                }
+
+                if (ry <= cloudCeiling + 1.8) {
+                  const sigma = sampleFogDensity(
+                    rx, ry, rz,
+                    cloudCeiling, cloudFloor,
+                    state.fogDensity * 0.14,
+                    state.windTime,
+                    false
+                  );
+
+                  if (sigma > 0.0005) {
+                    const opticalDepth = sigma * step;
+                    const stepTrans = Math.exp(-opticalDepth);
+
+                    const depthRatio = Math.max(0.0, Math.min(1.0, (cloudCeiling + 1.0 - ry) / 6.5));
+                    const sunPenetration = Math.exp(-depthRatio * (0.9 + state.fogDensity * 0.55));
+                    const litStrength = sunPenetration * forwardPhase;
+
+                    const localR = cloudAmbR + (cloudLitR - cloudAmbR) * litStrength;
+                    const localG = cloudAmbG + (cloudLitG - cloudAmbG) * litStrength;
+                    const localB = cloudAmbB + (cloudLitB - cloudAmbB) * litStrength;
+
+                    const weight = transmittance * (1.0 - stepTrans);
+                    scatterR += weight * localR;
+                    scatterG += weight * localG;
+                    scatterB += weight * localB;
+
+                    transmittance *= stepTrans;
+                  }
+                }
+
+                t += step;
+              }
+
+              if (hitTerrain && transmittance > 0.02) {
+                const [nx, ny, nz] = getTerrainNormal(hitX, hitZ, 0.35);
+                const nDotL = Math.max(0.0, nx * sunDirX + ny * sunDirY + nz * sunDirZ);
+                const skyAmb = 0.25 + 0.25 * ny;
+
+                const slope = ny;
+                const elev = hitY;
+                let matR, matG, matB;
+
+                if (elev > 14.8 && slope > 0.62) {
+                  matR = 0.72; matG = 0.75; matB = 0.80;
+                } else if (slope < 0.68 || elev > 11.5) {
+                  matR = 0.26; matG = 0.24; matB = 0.25;
+                } else {
+                  matR = 0.11; matG = 0.21; matB = 0.14;
+                }
+
+                const dampness = Math.max(0.55, Math.min(1.0, 0.55 + (elev / Math.max(4.0, cloudCeiling)) * 0.45));
+                matR *= dampness; matG *= dampness; matB *= dampness;
+
+                const distHaze = Math.min(0.65, (t / maxDist) * 0.55);
+
+                let surfR = matR * (sunColR * nDotL * 1.15 + skyHorizR * skyAmb * 0.45);
+                let surfG = matG * (sunColG * nDotL * 1.15 + skyHorizG * skyAmb * 0.45);
+                let surfB = matB * (sunColB * nDotL * 1.15 + skyHorizB * skyAmb * 0.45);
+
+                surfR = surfR * (1.0 - distHaze) + skyHorizR * 0.75 * distHaze;
+                surfG = surfG * (1.0 - distHaze) + skyHorizG * 0.75 * distHaze;
+                surfB = surfB * (1.0 - distHaze) + skyHorizB * 0.75 * distHaze;
+
+                finalR = scatterR + transmittance * surfR;
+                finalG = scatterG + transmittance * surfG;
+                finalB = scatterB + transmittance * surfB;
+              } else {
+                finalR = scatterR + transmittance * bgR;
+                finalG = scatterG + transmittance * bgG;
+                finalB = scatterB + transmittance * bgB;
+              }
+            } else {
+              // ================================================================
+              // SCENE 2: DOWNTOWN SKYSCRAPERS (2D DDA + Canyon Volumetric Fog)
+              // ================================================================
+              const cityHit = traceCityScene(camX, camY, camZ, rdx, rdy, rdz, maxDist);
+              const marchEnd = cityHit ? cityHit.t : maxDist;
+
+              // Raymarch volumetric fog from camera up to the hit building/street
+              let t = 2.0;
+              let transmittance = 1.0;
+              let scatterR = 0.0, scatterG = 0.0, scatterB = 0.0;
+
+              while (t < marchEnd && transmittance > 0.025) {
+                const rx = camX + rdx * t;
+                const ry = camY + rdy * t;
+                const rz = camZ + rdz * t;
+
+                if (ry > cloudCeiling + 2.0 && rdy > 0.0) break;
+
+                let step = 0.72 + t * 0.022;
+                // Don't overshoot the solid building surface
+                if (t + step > marchEnd) {
+                  step = Math.max(0.05, marchEnd - t);
+                }
+
+                if (ry <= cloudCeiling + 1.8) {
+                  const sigma = sampleFogDensity(
+                    rx, ry, rz,
+                    cloudCeiling, cloudFloor,
+                    state.fogDensity * 0.155,
+                    state.windTime,
+                    true
+                  );
+
+                  if (sigma > 0.0005) {
+                    const opticalDepth = sigma * step;
+                    const stepTrans = Math.exp(-opticalDepth);
+
+                    const depthRatio = Math.max(0.0, Math.min(1.0, (cloudCeiling + 1.0 - ry) / 6.5));
+                    const sunPenetration = Math.exp(-depthRatio * (0.95 + state.fogDensity * 0.55));
+                    const litStrength = sunPenetration * forwardPhase;
+
+                    // Warm city streetlight & window bounce glowing inside the lower street canyons
+                    const streetGlow = Math.exp(-ry * 0.24) * (preset.isNight ? 0.34 : 0.10);
+
+                    const localR = cloudAmbR + (cloudLitR - cloudAmbR) * litStrength + streetGlow * 1.15;
+                    const localG = cloudAmbG + (cloudLitG - cloudAmbG) * litStrength + streetGlow * 0.72;
+                    const localB = cloudAmbB + (cloudLitB - cloudAmbB) * litStrength + streetGlow * 0.32;
+
+                    const weight = transmittance * (1.0 - stepTrans);
+                    scatterR += weight * localR;
+                    scatterG += weight * localG;
+                    scatterB += weight * localB;
+
+                    transmittance *= stepTrans;
+                  }
+                }
+
+                t += step;
+              }
+
+              // Shade hit building or street floor
+              if (cityHit && transmittance > 0.02) {
+                const hitX = camX + rdx * cityHit.t;
+                const hitY = camY + rdy * cityHit.t;
+                const hitZ = camZ + rdz * cityHit.t;
+                const distHaze = Math.min(0.65, (cityHit.t / maxDist) * 0.55);
+
+                let surfR = 0.0, surfG = 0.0, surfB = 0.0;
+
+                if (cityHit.hitType === 'ground') {
+                  // Urban asphalt avenue & crosswalk grid markings
+                  const inAvenueX = Math.abs(hitX) < CITY_CELL * 0.5;
+                  const inAvenueZ = Math.abs(hitZ) < CITY_CELL * 0.5;
+                  const roadLine = (inAvenueX && Math.abs(hitX) < 0.14) || (inAvenueZ && Math.abs(hitZ) < 0.14);
+
+                  const baseR = roadLine ? 0.32 : 0.07;
+                  const baseG = roadLine ? 0.30 : 0.08;
+                  const baseB = roadLine ? 0.24 : 0.10;
+
+                  const nDotL = Math.max(0.0, sunDirY);
+                  surfR = baseR * (sunColR * nDotL * 0.8 + skyHorizR * 0.25);
+                  surfG = baseG * (sunColG * nDotL * 0.8 + skyHorizG * 0.25);
+                  surfB = baseB * (sunColB * nDotL * 0.8 + skyHorizB * 0.25);
+
+                  // Streetlamp pools along avenues
+                  const lamp = Math.max(0.0, Math.sin(hitX * 1.6) * Math.sin(hitZ * 1.6));
+                  const lampBoost = (preset.isNight ? 0.45 : 0.12) * Math.pow(lamp, 3.0);
+                  surfR += lampBoost * 1.1;
+                  surfG += lampBoost * 0.72;
+                  surfB += lampBoost * 0.30;
+                } else {
+                  // Skyscraper facade, roof, or spire
+                  const bld = cityHit.bld;
+                  let nx = 0.0, ny = 0.0, nz = 0.0;
+                  if (cityHit.axis === 0) nx = cityHit.sign;
+                  else if (cityHit.axis === 1) ny = cityHit.sign;
+                  else nz = cityHit.sign;
+
+                  const nDotL = Math.max(0.0, nx * sunDirX + ny * sunDirY + nz * sunDirZ);
+                  const skyAmb = 0.28 + 0.28 * ny;
+
+                  // Base facade material color by architectural style
+                  let matR, matG, matB;
+                  if (bld.style === 0) {
+                    matR = 0.22; matG = 0.24; matB = 0.29; // Steel & glass
+                  } else if (bld.style === 1) {
+                    matR = 0.18; matG = 0.26; matB = 0.36; // Blue curtain wall
+                  } else {
+                    matR = 0.28; matG = 0.25; matB = 0.23; // Warm concrete/granite
+                  }
+
+                  // Specular sun glint on glass facades
+                  let spec = 0.0;
+                  if (cityHit.axis !== 1 && !preset.isNight) {
+                    const reflX = rdx - 2.0 * (rdx * nx + rdz * nz) * nx;
+                    const reflZ = rdz - 2.0 * (rdx * nx + rdz * nz) * nz;
+                    const rDotS = Math.max(0.0, reflX * sunDirX + rdy * sunDirY + reflZ * sunDirZ);
+                    spec = Math.pow(rDotS, 18.0) * 0.75;
+                  }
+
+                  surfR = matR * (sunColR * nDotL * 1.15 + skyHorizR * skyAmb * 0.42) + sunColR * spec;
+                  surfG = matG * (sunColG * nDotL * 1.15 + skyHorizG * skyAmb * 0.42) + sunColG * spec;
+                  surfB = matB * (sunColB * nDotL * 1.15 + skyHorizB * skyAmb * 0.42) + sunColB * spec;
+
+                  if (cityHit.hitPart === 2) {
+                    // Rooftop spire + blinking red aviation warning beacon at tip
+                    const nearTip = (bld.spireTop - hitY) < 0.65;
+                    if (nearTip) {
+                      const beacon = 0.45 + 0.85 * beaconPulse;
+                      surfR += 1.35 * beacon;
+                      surfG += 0.14 * beacon;
+                      surfB += 0.12 * beacon;
+                    }
+                  } else if (cityHit.axis === 1) {
+                    // Rooftop parapet trim & helipad ring on flat towers
+                    const dx = Math.abs(hitX - cityHit.cx);
+                    const dz = Math.abs(hitZ - cityHit.cz);
+                    const rDist = Math.sqrt(dx * dx + dz * dz);
+                    if (rDist > 0.75 && rDist < 1.05 && bld.height > 11.0) {
+                      surfR += 0.22; surfG += 0.20; surfB += 0.12;
+                    }
+                  } else {
+                    // Vertical skyscraper wall -> Illuminated office window grid
+                    const uCoord = cityHit.axis === 0 ? (hitZ - cityHit.cz) : (hitX - cityHit.cx);
+                    const winCol = Math.floor((uCoord + 4.0) * 3.2);
+                    const winRow = Math.floor(hitY * 2.1);
+
+                    // Window pane mask (leaves mullions & floor slabs dark)
+                    const fx = ((uCoord + 4.0) * 3.2) - winCol;
+                    const fy = (hitY * 2.1) - winRow;
+
+                    if (fx > 0.22 && fx < 0.78 && fy > 0.25 && fy < 0.75 && hitY > 0.7 && hitY < bld.height - 0.35) {
+                      const wHash = cellHash(winCol + cityHit.gx * 19, winRow + cityHit.gz * 23);
+                      // Lit office clusters (floors & individual rooms)
+                      const floorActive = cellHash(winRow, cityHit.gx * 7 + cityHit.gz * 13) > 0.28;
+                      if (floorActive && wHash > 0.36) {
+                        const glow = preset.windowGlow * (0.65 + 0.55 * wHash);
+                        // Mix warm tungsten and cool fluorescent office lights
+                        if (wHash > 0.74) {
+                          surfR += 0.85 * glow;
+                          surfG += 0.96 * glow;
+                          surfB += 1.15 * glow;
+                        } else {
+                          surfR += 1.18 * glow;
+                          surfG += 0.88 * glow;
+                          surfB += 0.44 * glow;
+                        }
+                      }
+                    }
+                  }
+                }
+
+                surfR = surfR * (1.0 - distHaze) + skyHorizR * 0.72 * distHaze;
+                surfG = surfG * (1.0 - distHaze) + skyHorizG * 0.72 * distHaze;
+                surfB = surfB * (1.0 - distHaze) + skyHorizB * 0.72 * distHaze;
+
+                finalR = scatterR + transmittance * surfR;
+                finalG = scatterG + transmittance * surfG;
+                finalB = scatterB + transmittance * surfB;
+              } else {
+                finalR = scatterR + transmittance * bgR;
+                finalG = scatterG + transmittance * bgG;
+                finalB = scatterB + transmittance * bgB;
+              }
+            }
+
+            // Filmic tone mapping & gamma boost
+            finalR = finalR / (1.0 + finalR * 0.28);
+            finalG = finalG / (1.0 + finalG * 0.28);
+            finalB = finalB / (1.0 + finalB * 0.28);
+
+            const outIdx = (rowOffset + px) * 3;
+            rgbBuffer[outIdx]     = Math.pow(Math.max(0.0, Math.min(1.0, finalR)), 0.92);
+            rgbBuffer[outIdx + 1] = Math.pow(Math.max(0.0, Math.min(1.0, finalG)), 0.92);
+            rgbBuffer[outIdx + 2] = Math.pow(Math.max(0.0, Math.min(1.0, finalB)), 0.92);
+          }
+        }
+
+        // Quantize rendered buffer into selected retro display hardware format
+        if (state.mode === 'scr12') {
+          encodeScreen12YJK(state.dither);
+        } else if (state.mode === 'scr8') {
+          encodeScreen8RGB332(state.dither);
+        } else {
+          encodeTIC80Sweetie16(state.dither);
+        }
+
+        ctx.putImageData(imgData, 0, 0);
+      }
+
+      // --------------------------------------------------------------------------
+      // 7. Interactive UI & Touch/Mouse Camera Controls
+      // --------------------------------------------------------------------------
+      const sceneBadge = document.getElementById('sceneBadge');
+      const modeBadge = document.getElementById('modeBadge');
+      const hardwareNote = document.getElementById('hardwareNote');
+      const fpsCounter = document.getElementById('fpsCounter');
+      const timeLabel = document.getElementById('timeLabel');
+
+      // Scene Selector Buttons
+      document.querySelectorAll('.scene-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.scene = btn.dataset.scene;
+          document.querySelectorAll('.scene-btn').forEach(b => {
+            const active = b.dataset.scene === state.scene;
+            b.className = active
+              ? 'scene-btn p-2.5 rounded-lg border text-xs font-bold flex items-center justify-center gap-1.5 transition-all bg-emerald-500/20 border-emerald-400 text-emerald-200 shadow-[0_0_12px_rgba(16,185,129,0.2)]'
+              : 'scene-btn p-2.5 rounded-lg border text-xs font-bold flex items-center justify-center gap-1.5 transition-all bg-slate-950/80 border-slate-700 text-slate-400 hover:border-slate-500';
+          });
+          sceneBadge.textContent = state.scene === 'city' ? '都心のビル群' : '山間の雲海';
+        });
+      });
+
+      // Time of Day Preset Buttons
+      document.querySelectorAll('.time-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.timeKey = btn.dataset.time;
+          document.querySelectorAll('.time-btn').forEach(b => {
+            const active = b.dataset.time === state.timeKey;
+            b.className = active
+              ? 'time-btn py-1.5 px-1 rounded-lg border text-[11px] font-semibold transition-all bg-amber-500/20 border-amber-400 text-amber-200'
+              : 'time-btn py-1.5 px-1 rounded-lg border text-[11px] font-semibold transition-all bg-slate-950/80 border-slate-700 text-slate-400 hover:border-slate-500';
+          });
+          timeLabel.textContent = TIME_PRESETS[state.timeKey].label;
+        });
+      });
+
+      const modeDescriptions = {
+        scr12: {
+          badge: 'SCREEN 12 (YJK)',
+          html: '<strong class="text-sky-300 block mb-0.5">MSX2+ V9958 SCREEN 12 モード</strong>水平4ピクセル単位で色差成分(J, K)を平均共有し、各ピクセル固有の5bit輝度(Y)と合成するYJK方式を再現。雲海やビル街の霧の階調を滑らかに描写します。'
+        },
+        scr8: {
+          badge: 'SCREEN 8 (256色)',
+          html: '<strong class="text-sky-300 block mb-0.5">MSX2 V9938 SCREEN 8 モード</strong>R:3bit / G:3bit / B:2bit の固定256色パレット（RGB332）へ量子化。4×4ベイヤーディザリングにより、限られた青階調の空や夜霧のグラデーションを擬似表現します。'
+        },
+        tic80: {
+          badge: 'TIC-80 (16色)',
+          html: '<strong class="text-sky-300 block mb-0.5">TIC-80 Sweetie-16 パレットモード</strong>256×212解像度のまま、名作ファンタジーコンソールTIC-80標準の16色パレット（Sweetie-16）に減色。ビルの窓明かりや雲海のコントラストが際立ちます。'
+        }
+      };
+
+      document.querySelectorAll('.mode-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.mode = btn.dataset.mode;
+          document.querySelectorAll('.mode-btn').forEach(b => {
+            const active = b.dataset.mode === state.mode;
+            b.className = active
+              ? 'mode-btn p-2.5 rounded-xl text-xs sm:text-sm font-semibold border transition-all bg-sky-600/20 border-sky-400 text-sky-200 shadow-[0_0_15px_rgba(56,189,248,0.2)]'
+              : 'mode-btn p-2.5 rounded-xl text-xs sm:text-sm font-semibold border transition-all bg-slate-900/90 border-slate-700 text-slate-400 hover:border-slate-500';
+          });
+          modeBadge.textContent = modeDescriptions[state.mode].badge;
+          hardwareNote.innerHTML = modeDescriptions[state.mode].html;
+        });
+      });
+
+      // Dithering Toggle
+      const btnDither = document.getElementById('btnDither');
+      const ditherState = document.getElementById('ditherState');
+      btnDither.addEventListener('click', () => {
+        state.dither = !state.dither;
+        ditherState.textContent = state.dither ? 'ON' : 'OFF';
+        btnDither.className = state.dither
+          ? 'p-2 rounded-lg border text-[11px] font-semibold flex items-center justify-between transition-all bg-emerald-500/15 border-emerald-500/60 text-emerald-300'
+          : 'p-2 rounded-lg border text-[11px] font-semibold flex items-center justify-between transition-all bg-slate-800/80 border-slate-700 text-slate-400';
+      });
+
+      // Auto-Orbit Toggle
+      const btnOrbit = document.getElementById('btnOrbit');
+      const orbitState = document.getElementById('orbitState');
+      function setAutoOrbit(enabled) {
+        state.autoOrbit = enabled;
+        orbitState.textContent = enabled ? 'ON' : 'OFF';
+        btnOrbit.className = enabled
+          ? 'p-2 rounded-lg border text-[11px] font-semibold flex items-center justify-between transition-all bg-sky-500/15 border-sky-500/60 text-sky-300'
+          : 'p-2 rounded-lg border text-[11px] font-semibold flex items-center justify-between transition-all bg-slate-800/80 border-slate-700 text-slate-400';
+      }
+      btnOrbit.addEventListener('click', () => setAutoOrbit(!state.autoOrbit));
+
+      // Camera Reset Button
+      document.getElementById('btnResetCam').addEventListener('click', () => {
+        state.yaw = 0.65;
+        state.pitch = 0.34;
+        setAutoOrbit(true);
+      });
+
+      // Sliders
+      const sliderAltitude = document.getElementById('sliderAltitude');
+      const valAltitude = document.getElementById('valAltitude');
+      sliderAltitude.addEventListener('input', () => {
+        state.cloudAltitude = parseInt(sliderAltitude.value, 10) / 100.0;
+        valAltitude.textContent = `${sliderAltitude.value}%`;
+      });
+
+      const sliderDensity = document.getElementById('sliderDensity');
+      const valDensity = document.getElementById('valDensity');
+      sliderDensity.addEventListener('input', () => {
+        state.fogDensity = parseInt(sliderDensity.value, 10) / 100.0;
+        valDensity.textContent = state.fogDensity.toFixed(2);
+      });
+
+      const sliderWind = document.getElementById('sliderWind');
+      const valWind = document.getElementById('valWind');
+      sliderWind.addEventListener('input', () => {
+        state.windSpeed = parseInt(sliderWind.value, 10) / 10.0;
+        valWind.textContent = `${state.windSpeed.toFixed(1)}x`;
+      });
+
+      // Mouse & Touch Orbit Dragging on Canvas
+      let isDragging = false;
+      let lastX = 0;
+      let lastY = 0;
+
+      function startDrag(x, y) {
+        isDragging = true;
+        lastX = x;
+        lastY = y;
+        if (state.autoOrbit) setAutoOrbit(false);
+      }
+
+      function moveDrag(x, y) {
+        if (!isDragging) return;
+        const dx = x - lastX;
+        const dy = y - lastY;
+        lastX = x;
+        lastY = y;
+        state.yaw += dx * 0.0085;
+        state.pitch = Math.max(-0.15, Math.min(0.95, state.pitch + dy * 0.0075));
+      }
+
+      function endDrag() {
+        isDragging = false;
+      }
+
+      canvas.addEventListener('mousedown', e => startDrag(e.clientX, e.clientY));
+      window.addEventListener('mousemove', e => moveDrag(e.clientX, e.clientY));
+      window.addEventListener('mouseup', endDrag);
+
+      canvas.addEventListener('touchstart', e => {
+        if (e.touches.length > 0) {
+          startDrag(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      }, { passive: true });
+      canvas.addEventListener('touchmove', e => {
+        if (e.touches.length > 0) {
+          moveDrag(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      }, { passive: true });
+      canvas.addEventListener('touchend', endDrag);
+
+      // --------------------------------------------------------------------------
+      // 8. Main Animation Loop & FPS Counter
+      // --------------------------------------------------------------------------
+      let lastFrameTime = performance.now();
+      let fpsFrames = 0;
+      let fpsTimer = 0;
+
+      function loop(now) {
+        const dt = Math.min(0.1, (now - lastFrameTime) / 1000.0);
+        lastFrameTime = now;
+
+        renderFrame(dt);
+
+        fpsFrames++;
+        fpsTimer += dt;
+        if (fpsTimer >= 0.5) {
+          const fps = Math.round(fpsFrames / fpsTimer);
+          fpsCounter.textContent = `${fps} FPS`;
+          fpsFrames = 0;
+          fpsTimer = 0;
+        }
+
+        requestAnimationFrame(loop);
+      }
+
+      window.onload = function () {
+        lastFrameTime = performance.now();
+        requestAnimationFrame(loop);
+      };
+    })();
+  </script>
+</body>
+</html>

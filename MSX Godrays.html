@@ -1,0 +1,1286 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>MSX2+ / MSX2 / TIC-80 Volumetric God Rays Renderer (256x192)</title>
+<style>
+  * {
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  body {
+    margin: 0;
+    padding: 12px;
+    background: #11131a;
+    color: #e2e8f0;
+    font-family: 'Courier New', Consolas, Monaco, monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+  }
+  .container {
+    width: 100%;
+    max-width: 768px;
+    background: #1a1d28;
+    border: 2px solid #333c57;
+    border-radius: 6px;
+    padding: 12px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65);
+  }
+  .header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #333c57;
+  }
+  .title {
+    font-size: 14px;
+    font-weight: bold;
+    color: #f4f4f4;
+    letter-spacing: 0.5px;
+  }
+  .badge-group {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .badge {
+    font-size: 11px;
+    padding: 3px 7px;
+    border-radius: 3px;
+    background: #252b3b;
+    border: 1px solid #41a6f6;
+    color: #73eff7;
+  }
+  .scene-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .tab-btn {
+    flex: 1;
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: bold;
+    background: #252b3b;
+    color: #94b0c2;
+    border: 1px solid #333c57;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .tab-btn.active {
+    background: #3b5dc9;
+    color: #f4f4f4;
+    border-color: #73eff7;
+  }
+  .viewport-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    background: #000;
+    border: 2px solid #566c86;
+    border-radius: 4px;
+    overflow: hidden;
+    touch-action: none;
+    cursor: grab;
+  }
+  .viewport-wrap:active {
+    cursor: grabbing;
+  }
+  canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+  .hud-overlay {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    pointer-events: none;
+    font-size: 11px;
+    line-height: 1.4;
+    color: #f4f4f4;
+    text-shadow: 1px 1px 0 #1a1c2c, -1px -1px 0 #1a1c2c, 1px -1px 0 #1a1c2c, -1px 1px 0 #1a1c2c;
+  }
+  .hud-hint {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    pointer-events: none;
+    font-size: 11px;
+    color: #ffcd75;
+    text-shadow: 1px 1px 0 #1a1c2c;
+  }
+  .controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+  }
+  .ctrl-card {
+    background: #222736;
+    border: 1px solid #333c57;
+    border-radius: 4px;
+    padding: 8px 10px;
+  }
+  .ctrl-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #94b0c2;
+    margin-bottom: 6px;
+  }
+  .ctrl-val {
+    color: #ffcd75;
+    font-weight: bold;
+  }
+  input[type="range"] {
+    width: 100%;
+    accent-color: #41a6f6;
+    cursor: pointer;
+  }
+  .btn-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .toggle-btn {
+    flex: 1;
+    min-width: 70px;
+    padding: 6px 8px;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: bold;
+    background: #29366f;
+    color: #f4f4f4;
+    border: 1px solid #41a6f6;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  .toggle-btn.off {
+    background: #252b3b;
+    color: #94b0c2;
+    border-color: #566c86;
+  }
+  .toggle-btn.godray-on {
+    background: #257179;
+    border-color: #a7f070;
+    color: #f4f4f4;
+  }
+  .toggle-btn.sc12 {
+    background: #5d275d;
+    border-color: #ef7d57;
+    color: #ffcd75;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <div class="title">MSX2+ / MSX2 / TIC-80 3D GOD RAYS (256×192)</div>
+    <div class="badge-group">
+      <span class="badge" id="colBadge">256×192 | SCREEN 12 (YJK)</span>
+      <span class="badge" id="fpsBadge">-- FPS</span>
+    </div>
+  </div>
+
+  <div class="scene-tabs">
+    <button class="tab-btn active" id="tabForest" onclick="setScene('forest')">🌲 FOREST SUNBEAMS (木漏れ日)</button>
+    <button class="tab-btn" id="tabTemple" onclick="setScene('temple')">🏛️ ANCIENT TEMPLE (神殿の光柱)</button>
+  </div>
+
+  <div class="viewport-wrap" id="viewport">
+    <canvas id="screen" width="256" height="192"></canvas>
+    <div class="hud-overlay" id="hudText">
+      MODE: MSX2+ SCREEN 12 (YJK 19,268 COLS)<br>
+      GOD RAYS: ON (STEPS: 10 | JITTER: ON)
+    </div>
+    <div class="hud-hint">DRAG: 360° LOOK AROUND</div>
+  </div>
+
+  <div class="controls">
+    <div class="ctrl-card">
+      <div class="ctrl-header">
+        <span>VOLUMETRIC GOD RAYS</span>
+        <span class="ctrl-val" id="godrayVal">ON</span>
+      </div>
+      <div class="btn-row">
+        <button class="toggle-btn godray-on" id="btnGodray" onclick="toggleGodray()">GOD RAYS: ON</button>
+        <button class="toggle-btn" id="btnJitter" onclick="toggleJitter()">JITTER: ON</button>
+      </div>
+    </div>
+
+    <div class="ctrl-card">
+      <div class="ctrl-header">
+        <span>VIDEO MODE & DITHER</span>
+        <span class="ctrl-val" id="palVal">SC12 YJK</span>
+      </div>
+      <div class="btn-row">
+        <button class="toggle-btn sc12" id="btnPalette" onclick="cyclePalette()">MSX2+ SC12 (YJK)</button>
+        <button class="toggle-btn" id="btnDither" onclick="cycleDither()">BAYER 4×4</button>
+      </div>
+    </div>
+
+    <div class="ctrl-card">
+      <div class="ctrl-header">
+        <span>RAYMARCH STEPS (粗さ)</span>
+        <span class="ctrl-val" id="stepsVal">10</span>
+      </div>
+      <input type="range" id="stepsSlider" min="4" max="24" step="1" value="10" oninput="updateParams()">
+    </div>
+
+    <div class="ctrl-card">
+      <div class="ctrl-header">
+        <span>SUN AZIMUTH / ANGLE</span>
+        <span class="ctrl-val" id="sunVal">32°</span>
+      </div>
+      <input type="range" id="sunSlider" min="-75" max="75" step="1" value="32" oninput="updateParams()">
+    </div>
+
+    <div class="ctrl-card">
+      <div class="ctrl-header">
+        <span>SHAFTS DENSITY (光の濃さ)</span>
+        <span class="ctrl-val" id="densVal">1.25</span>
+      </div>
+      <input type="range" id="densSlider" min="0.4" max="2.4" step="0.05" value="1.25" oninput="updateParams()">
+    </div>
+
+    <div class="ctrl-card">
+      <div class="ctrl-header">
+        <span>TIME OF DAY (時間帯)</span>
+        <span class="ctrl-val" id="timeVal">MORNING</span>
+      </div>
+      <div class="btn-row">
+        <button class="toggle-btn" id="btnTimeMorning" onclick="setTimeOfDay('morning')">MORNING</button>
+        <button class="toggle-btn off" id="btnTimeNoon" onclick="setTimeOfDay('noon')">NOON</button>
+        <button class="toggle-btn off" id="btnTimeSunset" onclick="setTimeOfDay('sunset')">SUNSET</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const W = 256;
+const H = 192;
+const canvas = document.getElementById('screen');
+const ctx = canvas.getContext('2d');
+const imgData = ctx.createImageData(W, H);
+const pixels = imgData.data;
+
+// Buffers
+const zBuf = new Float32Array(W * H);
+const rBuf = new Float32Array(W * H);
+const gBuf = new Float32Array(W * H);
+const bBuf = new Float32Array(W * H);
+
+// TIC-80 Sweetie-16 Palette
+const SWEETIE16 = [
+  [26, 28, 44],    [93, 39, 93],    [177, 62, 83],   [239, 125, 87],
+  [255, 205, 117], [167, 240, 112], [56, 183, 100],  [37, 113, 121],
+  [41, 54, 111],   [59, 93, 201],   [65, 166, 246],  [115, 239, 247],
+  [244, 244, 244], [148, 176, 194], [86, 108, 134],  [51, 60, 87]
+];
+
+// 4x4 Bayer Matrix
+const BAYER4 = [
+   0,  8,  2, 10,
+  12,  4, 14,  6,
+   3, 11,  1,  9,
+  15,  7, 13,  5
+];
+
+// State
+const state = {
+  scene: 'forest',
+  godrays: true,
+  jitter: true,
+  palette: 'sc12', // 'sc12' | 'msx2' | 'tic80'
+  dither: 'bayer4', // 'bayer4' | 'bayer2' | 'none'
+  steps: 10,
+  sunAngle: 32,
+  density: 1.25,
+  timeOfDay: 'morning',
+  camYaw: 0.0,
+  camPitch: 0.14,
+  time: 0
+};
+
+// Forest procedural geometry
+const trees = [];
+const ferns = [];
+function initForest() {
+  trees.length = 0;
+  ferns.length = 0;
+  let s = 1337;
+  const rand = () => {
+    s = (s * 16807) % 2147483647;
+    return (s - 1) / 2147483646;
+  };
+
+  const fixedTrees = [
+    { x: -3.2, z: 4.5, r: 0.52, h: 11.0 },
+    { x:  3.4, z: 5.2, r: 0.48, h: 11.0 },
+    { x: -2.3, z: 9.5, r: 0.42, h: 11.5 },
+    { x:  2.7, z: 10.8, r: 0.44, h: 11.5 },
+    { x: -4.2, z: 14.5, r: 0.50, h: 12.0 },
+    { x:  3.8, z: 15.5, r: 0.46, h: 12.0 },
+    { x: -1.8, z: 19.5, r: 0.38, h: 12.0 },
+    { x:  2.2, z: 21.0, r: 0.40, h: 12.0 }
+  ];
+  for (const t of fixedTrees) trees.push(t);
+
+  for (let i = 0; i < 48; i++) {
+    const ang = (i / 48) * Math.PI * 2 + (rand() - 0.5) * 0.12;
+    const dist = 5.5 + rand() * 19.0;
+    const x = Math.sin(ang) * dist;
+    const z = Math.cos(ang) * dist + 4.0;
+    const pathX = Math.sin(z * 0.22) * 1.1;
+    if (Math.abs(x - pathX) < 1.55 && z > 0 && z < 24) continue;
+    let tooClose = false;
+    for (const o of trees) {
+      const dx = o.x - x, dz = o.z - z;
+      if (dx * dx + dz * dz < 2.2) { tooClose = true; break; }
+    }
+    if (!tooClose) {
+      trees.push({
+        x,
+        z,
+        r: 0.28 + rand() * 0.26,
+        h: 9.5 + rand() * 3.5
+      });
+    }
+  }
+
+  for (let i = 0; i < 95; i++) {
+    const ang = rand() * Math.PI * 2;
+    const dist = 2.2 + rand() * 20.0;
+    const x = Math.sin(ang) * dist;
+    const z = Math.cos(ang) * dist + 3.0;
+    const pathX = Math.sin(z * 0.22) * 1.1;
+    if (Math.abs(x - pathX) < 1.05 && z > 0 && z < 24) continue;
+    ferns.push({
+      x,
+      z,
+      size: 0.45 + rand() * 0.55,
+      phase: rand() * Math.PI * 2
+    });
+  }
+}
+initForest();
+
+// UI handlers
+function setScene(sc) {
+  state.scene = sc;
+  document.getElementById('tabForest').classList.toggle('active', sc === 'forest');
+  document.getElementById('tabTemple').classList.toggle('active', sc === 'temple');
+  if (sc === 'forest') {
+    state.camYaw = 0.0;
+    state.camPitch = 0.14;
+  } else {
+    state.camYaw = 0.0;
+    state.camPitch = 0.06;
+  }
+  updateHUD();
+}
+
+function toggleGodray() {
+  state.godrays = !state.godrays;
+  const btn = document.getElementById('btnGodray');
+  btn.textContent = state.godrays ? 'GOD RAYS: ON' : 'GOD RAYS: OFF';
+  btn.classList.toggle('godray-on', state.godrays);
+  btn.classList.toggle('off', !state.godrays);
+  document.getElementById('godrayVal').textContent = state.godrays ? 'ON' : 'OFF';
+  updateHUD();
+}
+
+function toggleJitter() {
+  state.jitter = !state.jitter;
+  const btn = document.getElementById('btnJitter');
+  btn.textContent = state.jitter ? 'JITTER: ON' : 'JITTER: OFF';
+  btn.classList.toggle('off', !state.jitter);
+  updateHUD();
+}
+
+function cyclePalette() {
+  const order = ['sc12', 'msx2', 'tic80'];
+  const labels = {
+    sc12: 'MSX2+ SC12 (YJK)',
+    msx2: 'MSX2 SC8 (256)',
+    tic80: 'TIC-80 (16 COLS)'
+  };
+  const shortLabels = {
+    sc12: 'SC12 YJK',
+    msx2: 'MSX2 256',
+    tic80: 'TIC-80 16'
+  };
+  state.palette = order[(order.indexOf(state.palette) + 1) % order.length];
+  const btn = document.getElementById('btnPalette');
+  btn.textContent = labels[state.palette];
+  btn.classList.toggle('sc12', state.palette === 'sc12');
+  document.getElementById('palVal').textContent = shortLabels[state.palette];
+  updateHUD();
+}
+
+function cycleDither() {
+  const order = ['bayer4', 'bayer2', 'none'];
+  const labels = { bayer4: 'BAYER 4×4', bayer2: 'BAYER 2×2', none: 'NO DITHER' };
+  state.dither = order[(order.indexOf(state.dither) + 1) % order.length];
+  document.getElementById('btnDither').textContent = labels[state.dither];
+}
+
+function setTimeOfDay(tod) {
+  state.timeOfDay = tod;
+  document.getElementById('timeVal').textContent = tod.toUpperCase();
+  ['morning', 'noon', 'sunset'].forEach(t => {
+    document.getElementById('btnTime' + t[0].toUpperCase() + t.slice(1)).classList.toggle('off', t !== tod);
+  });
+}
+
+function updateParams() {
+  state.steps = parseInt(document.getElementById('stepsSlider').value, 10);
+  state.sunAngle = parseInt(document.getElementById('sunSlider').value, 10);
+  state.density = parseFloat(document.getElementById('densSlider').value);
+  document.getElementById('stepsVal').textContent = state.steps;
+  document.getElementById('sunVal').textContent = state.sunAngle + '°';
+  document.getElementById('densVal').textContent = state.density.toFixed(2);
+  updateHUD();
+}
+
+function updateHUD() {
+  let palStr = 'MSX2+ SCREEN 12 (YJK 19,268 COLS)';
+  if (state.palette === 'msx2') palStr = 'MSX2 SCREEN 8 (GRB 3-3-2 / 256)';
+  if (state.palette === 'tic80') palStr = 'TIC-80 SWEETIE-16 (16 COLS)';
+
+  const grStr = state.godrays
+    ? `ON (STEPS: ${state.steps} | JITTER: ${state.jitter ? 'ON' : 'OFF'})`
+    : 'OFF';
+  document.getElementById('hudText').innerHTML = `MODE: ${palStr}<br>GOD RAYS: ${grStr}`;
+}
+
+// Camera Drag (360-degree yaw + wide pitch)
+let dragging = false;
+let lastX = 0, lastY = 0;
+const viewport = document.getElementById('viewport');
+
+viewport.addEventListener('pointerdown', (e) => {
+  dragging = true;
+  lastX = e.clientX;
+  lastY = e.clientY;
+  viewport.setPointerCapture(e.pointerId);
+});
+
+viewport.addEventListener('pointermove', (e) => {
+  if (!dragging) return;
+  const dx = e.clientX - lastX;
+  const dy = e.clientY - lastY;
+  lastX = e.clientX;
+  lastY = e.clientY;
+
+  state.camYaw += dx * 0.0085;
+  state.camPitch = Math.max(-0.55, Math.min(0.85, state.camPitch - dy * 0.0065));
+});
+
+viewport.addEventListener('pointerup', (e) => {
+  dragging = false;
+  try { viewport.releasePointerCapture(e.pointerId); } catch (_) {}
+});
+
+function getThemeColors() {
+  if (state.timeOfDay === 'noon') {
+    return {
+      skyTop: [140, 215, 245],
+      skyHorizon: [215, 245, 220],
+      fog: [95, 145, 115],
+      ray: [255, 250, 210],
+      ambient: [0.42, 0.52, 0.44],
+      sunElev: 0.72
+    };
+  } else if (state.timeOfDay === 'sunset') {
+    return {
+      skyTop: [95, 65, 115],
+      skyHorizon: [245, 155, 85],
+      fog: [115, 72, 65],
+      ray: [255, 175, 95],
+      ambient: [0.46, 0.34, 0.32],
+      sunElev: 0.44
+    };
+  }
+  return {
+    skyTop: [175, 225, 200],
+    skyHorizon: [242, 244, 212],
+    fog: [82, 118, 96],
+    ray: [255, 238, 178],
+    ambient: [0.36, 0.45, 0.39],
+    sunElev: 0.58
+  };
+}
+
+function sampleForestLight(px, py, pz, sunDirX, sunDirY, sunDirZ, tAnim) {
+  const canopyY = 6.2;
+  const distToCanopy = Math.max(0, (canopyY - py) / Math.max(0.15, sunDirY));
+  const cx = px + sunDirX * distToCanopy;
+  const cz = pz + sunDirZ * distToCanopy;
+
+  const centerZ = 10.5;
+  const centerX = Math.sin(centerZ * 0.22) * 1.1;
+  const dx = cx - centerX;
+  const dz = (cz - centerZ) * 0.75;
+  const radialDist = Math.sqrt(dx * dx + dz * dz);
+
+  const opening = Math.max(0, 1.0 - radialDist / 8.8);
+
+  const wave1 = Math.sin(cx * 1.65 + cz * 0.55 + tAnim * 0.35);
+  const wave2 = Math.cos(cx * 2.9 - cz * 1.35 - tAnim * 0.25);
+  const wave3 = Math.sin((cx + cz) * 4.2 + tAnim * 0.4);
+  const shaftPattern = wave1 * 0.55 + wave2 * 0.30 + wave3 * 0.15;
+
+  let beam = Math.max(0, (shaftPattern + 0.28) * 1.35);
+  beam = Math.min(1.0, beam * beam * (0.45 + opening * 1.15));
+
+  for (let i = 0; i < 8; i++) {
+    const tr = trees[i];
+    if (py < tr.h) {
+      const vx = tr.x - px;
+      const vz = tr.z - pz;
+      const proj = vx * sunDirX + vz * sunDirZ;
+      if (proj > 0) {
+        const perpX = vx - sunDirX * proj;
+        const perpZ = vz - sunDirZ * proj;
+        const d2 = perpX * perpX + perpZ * perpZ;
+        if (d2 < (tr.r * 1.15) * (tr.r * 1.15)) {
+          beam *= 0.12;
+          break;
+        }
+      }
+    }
+  }
+
+  return beam;
+}
+
+function renderForest(theme) {
+  const camX = 0.0;
+  const camY = 1.45;
+  const camZ = 0.2;
+
+  const cosY = Math.cos(state.camYaw);
+  const sinY = Math.sin(state.camYaw);
+  const cosP = Math.cos(state.camPitch);
+  const sinP = Math.sin(state.camPitch);
+
+  const azRad = (state.sunAngle * Math.PI) / 180;
+  const sunDirX = Math.sin(azRad) * 0.72;
+  const sunDirY = theme.sunElev;
+  const sunDirZ = Math.cos(azRad) * 0.45;
+  const sLen = Math.hypot(sunDirX, sunDirY, sunDirZ);
+  const sdx = sunDirX / sLen, sdy = sunDirY / sLen, sdz = sunDirZ / sLen;
+
+  const fov = 155.0;
+  const halfW = W * 0.5;
+  const halfH = H * 0.5;
+  const maxDist = 28.0;
+
+  for (let y = 0; y < H; y++) {
+    const sy = -(y - halfH) / fov;
+    for (let x = 0; x < W; x++) {
+      const idx = y * W + x;
+      const sx = (x - halfW) / fov;
+
+      const ly = sy * cosP + sinP;
+      const lz = cosP - sy * sinP;
+      const rx = sx * cosY + lz * sinY;
+      const ry = ly;
+      const rz = -sx * sinY + lz * cosY;
+
+      const rLen = Math.hypot(rx, ry, rz);
+      const dx = rx / rLen, dy = ry / rLen, dz = rz / rLen;
+
+      if (dy < -0.005) {
+        const t = -camY / dy;
+        if (t > 0 && t < maxDist) {
+          zBuf[idx] = t;
+          const gx = camX + dx * t;
+          const gz = camZ + dz * t;
+
+          const pathCenter = Math.sin(gz * 0.22) * 1.1;
+          const distFromPath = Math.abs(gx - pathCenter);
+          const pathNoise = Math.sin(gx * 3.7 + gz * 2.3) * 0.14 + Math.cos(gx * 7.1 - gz * 5.2) * 0.07;
+          const isPath = (distFromPath + pathNoise) < 0.92;
+
+          const dapple = sampleForestLight(gx, 0.0, gz, sdx, sdy, sdz, state.time);
+          const lit = 0.34 + dapple * 1.15;
+
+          let r, g, b;
+          if (isPath) {
+            const pebble = Math.sin(gx * 13.0) * Math.cos(gz * 13.0) * 14;
+            r = (128 + pebble) * lit;
+            g = (94 + pebble * 0.8) * lit;
+            b = (62 + pebble * 0.5) * lit;
+          } else {
+            const mossVar = Math.sin(gx * 4.5) * Math.cos(gz * 4.5);
+            r = (42 + mossVar * 12) * lit;
+            g = (78 + mossVar * 18) * lit;
+            b = (38 + mossVar * 8) * lit;
+          }
+
+          const fogF = Math.min(1.0, Math.pow(t / maxDist, 1.35));
+          rBuf[idx] = r * (1 - fogF) + theme.fog[0] * fogF;
+          gBuf[idx] = g * (1 - fogF) + theme.fog[1] * fogF;
+          bBuf[idx] = b * (1 - fogF) + theme.fog[2] * fogF;
+        } else {
+          zBuf[idx] = maxDist;
+          rBuf[idx] = theme.fog[0];
+          gBuf[idx] = theme.fog[1];
+          bBuf[idx] = theme.fog[2];
+        }
+      } else {
+        zBuf[idx] = maxDist;
+        const sunDot = Math.max(0, dx * sdx + dy * sdy + dz * sdz);
+        const skyT = Math.min(1.0, Math.max(0, dy * 1.6));
+
+        let r = theme.skyHorizon[0] * (1 - skyT) + theme.skyTop[0] * skyT + Math.pow(sunDot, 6) * 90;
+        let g = theme.skyHorizon[1] * (1 - skyT) + theme.skyTop[1] * skyT + Math.pow(sunDot, 6) * 80;
+        let b = theme.skyHorizon[2] * (1 - skyT) + theme.skyTop[2] * skyT + Math.pow(sunDot, 6) * 55;
+
+        if (dy > 0.05) {
+          const skyX = dx / Math.max(0.12, dy);
+          const skyZ = dz / Math.max(0.12, dy);
+          const leafNoise =
+            Math.sin(skyX * 3.1 + skyZ * 2.4) * 0.45 +
+            Math.cos(skyX * 6.7 - skyZ * 5.3) * 0.35 +
+            Math.sin(skyX * 13.0 + skyZ * 11.0) * 0.20;
+          const gapDist = Math.hypot(dx - sdx * 0.7, dz - sdz * 0.7);
+          const leafMask = leafNoise + (gapDist - 0.38) * 1.45;
+
+          if (leafMask > 0.12) {
+            const backLit = Math.max(0, 1.0 - gapDist * 1.2);
+            const lr = 36 + backLit * 75 + (leafNoise > 0.35 ? 18 : 0);
+            const lg = 68 + backLit * 95 + (leafNoise > 0.35 ? 24 : 0);
+            const lb = 32 + backLit * 30;
+            const alpha = Math.min(1.0, (leafMask - 0.12) * 3.5);
+            r = r * (1 - alpha) + lr * alpha;
+            g = g * (1 - alpha) + lg * alpha;
+            b = b * (1 - alpha) + lb * alpha;
+          }
+        } else {
+          const treeLine = Math.sin(Math.atan2(dx, dz) * 18.0) * 0.03 + 0.05;
+          if (dy < treeLine) {
+            r = theme.fog[0] * 0.78;
+            g = theme.fog[1] * 0.85;
+            b = theme.fog[2] * 0.78;
+          }
+        }
+
+        rBuf[idx] = r;
+        gBuf[idx] = g;
+        bBuf[idx] = b;
+      }
+    }
+  }
+
+  function project(wx, wy, wz) {
+    const tx = wx - camX;
+    const ty = wy - camY;
+    const tz = wz - camZ;
+    const rx = tx * cosY - tz * sinY;
+    const rz0 = tx * sinY + tz * cosY;
+    const ry = ty * cosP - rz0 * sinP;
+    const rz = ty * sinP + rz0 * cosP;
+    if (rz <= 0.25) return null;
+    const sx = halfW + (rx / rz) * fov;
+    const sy = halfH - (ry / rz) * fov;
+    return { sx, sy, rz };
+  }
+
+  for (const tr of trees) {
+    const base = project(tr.x, 0, tr.z);
+    if (!base || base.rz > maxDist) continue;
+    const top = project(tr.x, tr.h, tr.z);
+    if (!top) continue;
+
+    const screenR = Math.max(1.5, (tr.r / base.rz) * fov);
+    const minX = Math.max(0, Math.floor(Math.min(base.sx, top.sx) - screenR * 1.2));
+    const maxX = Math.min(W - 1, Math.ceil(Math.max(base.sx, top.sx) + screenR * 1.2));
+    const minY = Math.max(0, Math.floor(Math.min(base.sy, top.sy)));
+    const maxY = Math.min(H - 1, Math.ceil(Math.max(base.sy, top.sy)));
+
+    if (maxX < 0 || minX >= W || maxY < 0 || minY >= H) continue;
+
+    const fogF = Math.min(1.0, Math.pow(base.rz / maxDist, 1.35));
+
+    for (let y = minY; y <= maxY; y++) {
+      const v = (base.sy - y) / Math.max(1, base.sy - top.sy);
+      const centerX = base.sx + (top.sx - base.sx) * v + Math.sin(v * 4.5 + tr.x) * screenR * 0.18;
+      const curR = screenR * (1.18 - v * 0.42);
+      const x0 = Math.max(0, Math.floor(centerX - curR));
+      const x1 = Math.min(W - 1, Math.ceil(centerX + curR));
+
+      for (let x = x0; x <= x1; x++) {
+        const nx = (x - centerX) / Math.max(0.5, curR);
+        if (Math.abs(nx) > 1.0) continue;
+        const depthOffset = Math.sqrt(Math.max(0, 1 - nx * nx)) * tr.r;
+        const depth = base.rz - depthOffset;
+        const idx = y * W + x;
+        if (depth < zBuf[idx]) {
+          zBuf[idx] = depth;
+          const nz = Math.sqrt(Math.max(0, 1 - nx * nx));
+          const sunLit = Math.max(0, nx * sdx - nz * sdz);
+          const barkTex = Math.sin(v * 38.0 + nx * 7.0) * 10;
+          const rim = Math.pow(sunLit, 1.5) * 85;
+          const baseShade = 0.35 + sunLit * 0.55;
+
+          const br = (58 + barkTex) * baseShade + rim;
+          const bg = (44 + barkTex * 0.8) * baseShade + rim * 0.85;
+          const bb = (34 + barkTex * 0.6) * baseShade + rim * 0.5;
+
+          rBuf[idx] = br * (1 - fogF) + theme.fog[0] * fogF;
+          gBuf[idx] = bg * (1 - fogF) + theme.fog[1] * fogF;
+          bBuf[idx] = bb * (1 - fogF) + theme.fog[2] * fogF;
+        }
+      }
+    }
+
+    const crown = project(tr.x, tr.h * 0.76, tr.z);
+    if (crown && crown.rz > 1.2) {
+      const cr = (2.1 / crown.rz) * fov;
+      const cx0 = Math.max(0, Math.floor(crown.sx - cr));
+      const cx1 = Math.min(W - 1, Math.ceil(crown.sx + cr));
+      const cy0 = Math.max(0, Math.floor(crown.sy - cr * 0.65));
+      const cy1 = Math.min(H - 1, Math.ceil(crown.sy + cr * 0.45));
+      for (let y = cy0; y <= cy1; y++) {
+        for (let x = cx0; x <= cx1; x++) {
+          const dx = (x - crown.sx) / cr;
+          const dy = (y - crown.sy) / (cr * 0.55);
+          const d2 = dx * dx + dy * dy;
+          const leafEdge = Math.sin(x * 0.7 + tr.x) * Math.cos(y * 0.7 + tr.z) * 0.28;
+          if (d2 + leafEdge < 0.85) {
+            const idx = y * W + x;
+            const depth = crown.rz - 0.5;
+            if (depth < zBuf[idx]) {
+              zBuf[idx] = depth;
+              const hi = dy < -0.1 ? 1.25 : 0.72;
+              const lr = 38 * hi;
+              const lg = 78 * hi;
+              const lb = 34 * hi;
+              rBuf[idx] = lr * (1 - fogF) + theme.fog[0] * fogF;
+              gBuf[idx] = lg * (1 - fogF) + theme.fog[1] * fogF;
+              bBuf[idx] = lb * (1 - fogF) + theme.fog[2] * fogF;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  for (const fn of ferns) {
+    const p = project(fn.x, 0.15, fn.z);
+    if (!p || p.rz > 18.0) continue;
+    const rad = Math.max(2, (fn.size / p.rz) * fov);
+    const fogF = Math.min(1.0, Math.pow(p.rz / maxDist, 1.35));
+    for (let frond = 0; frond < 5; frond++) {
+      const ang = (frond / 5) * Math.PI - Math.PI * 0.9;
+      for (let s = 1; s <= rad; s++) {
+        const t = s / rad;
+        const fx = Math.round(p.sx + Math.cos(ang) * s * 1.4);
+        const fy = Math.round(p.sy + Math.sin(ang) * s * 0.7 + t * t * rad * 0.35);
+        if (fx >= 0 && fx < W && fy >= 0 && fy < H) {
+          const idx = fy * W + fx;
+          if (p.rz < zBuf[idx]) {
+            zBuf[idx] = p.rz;
+            const shade = 0.55 + (1 - t) * 0.55;
+            rBuf[idx] = (46 * shade) * (1 - fogF) + theme.fog[0] * fogF;
+            gBuf[idx] = (96 * shade) * (1 - fogF) + theme.fog[1] * fogF;
+            bBuf[idx] = (42 * shade) * (1 - fogF) + theme.fog[2] * fogF;
+          }
+        }
+      }
+    }
+  }
+
+  if (state.godrays) {
+    const steps = state.steps;
+    const rayR = theme.ray[0];
+    const rayG = theme.ray[1];
+    const rayB = theme.ray[2];
+
+    for (let y = 0; y < H; y++) {
+      const sy = -(y - halfH) / fov;
+      for (let x = 0; x < W; x++) {
+        const idx = y * W + x;
+        const sx = (x - halfW) / fov;
+
+        const ly = sy * cosP + sinP;
+        const lz = cosP - sy * sinP;
+        const rx = sx * cosY + lz * sinY;
+        const ry = ly;
+        const rz = -sx * sinY + lz * cosY;
+        const rLen = Math.hypot(rx, ry, rz);
+        const dx = rx / rLen, dy = ry / rLen, dz = rz / rLen;
+
+        const cosTheta = dx * sdx + dy * sdy + dz * sdz;
+        const miePhase = 0.55 + 0.85 * Math.pow(Math.max(0, cosTheta), 2.5);
+
+        const marchMax = Math.min(zBuf[idx], 22.0);
+        const stepSize = marchMax / steps;
+
+        let jitterOffset = 0.5;
+        if (state.jitter) {
+          const bayerVal = BAYER4[(y & 3) * 4 + (x & 3)] / 16.0;
+          const hash = ((x * 73 + y * 151) & 15) / 16.0;
+          jitterOffset = (bayerVal * 0.7 + hash * 0.3);
+        }
+
+        let accum = 0.0;
+        for (let s = 0; s < steps; s++) {
+          const t = (s + jitterOffset) * stepSize;
+          if (t >= marchMax) break;
+          const wx = camX + dx * t;
+          const wy = camY + dy * t;
+          const wz = camZ + dz * t;
+          if (wy < 0 || wy > 7.5) continue;
+
+          const light = sampleForestLight(wx, wy, wz, sdx, sdy, sdz, state.time);
+          const mistDensity = 0.7 + 0.45 * Math.exp(-wy * 0.22);
+          accum += light * mistDensity * stepSize;
+        }
+
+        const intensity = Math.min(1.15, accum * 0.095 * state.density * miePhase);
+        rBuf[idx] += rayR * intensity;
+        gBuf[idx] += rayG * intensity;
+        bBuf[idx] += rayB * intensity;
+      }
+    }
+  }
+}
+
+function renderTemple(theme) {
+  const camX = 0.0;
+  const camY = 1.75;
+  const camZ = -1.5;
+
+  const cosY = Math.cos(state.camYaw);
+  const sinY = Math.sin(state.camYaw);
+  const cosP = Math.cos(state.camPitch);
+  const sinP = Math.sin(state.camPitch);
+
+  const azRad = (state.sunAngle * Math.PI) / 180;
+  const sunDirX = Math.sin(azRad) * 0.65;
+  const sunDirY = 0.78;
+  const sunDirZ = Math.cos(azRad) * 0.35;
+  const sLen = Math.hypot(sunDirX, sunDirY, sunDirZ);
+  const sdx = sunDirX / sLen, sdy = sunDirY / sLen, sdz = sunDirZ / sLen;
+
+  const fov = 155.0;
+  const halfW = W * 0.5;
+  const halfH = H * 0.5;
+  const maxDist = 26.0;
+
+  function sampleTempleLight(wx, wy, wz) {
+    const tRoof = (6.0 - wy) / Math.max(0.15, sdy);
+    const rx = wx + sdx * tRoof;
+    const rz = wz + sdz * tRoof;
+
+    const zMod = ((rz % 4.5) + 4.5) % 4.5;
+    const inZSlot = zMod > 1.2 && zMod < 3.3 && rz > 1.0 && rz < 20.0;
+    const inXSlot = Math.abs(rx) < 2.2;
+    if (!inZSlot || !inXSlot) return 0.0;
+
+    const edgeX = 1.0 - Math.abs(rx) / 2.2;
+    const edgeZ = 1.0 - Math.abs(zMod - 2.25) / 1.05;
+    return Math.min(1.0, edgeX * edgeZ * 2.2);
+  }
+
+  for (let y = 0; y < H; y++) {
+    const sy = -(y - halfH) / fov;
+    for (let x = 0; x < W; x++) {
+      const idx = y * W + x;
+      const sx = (x - halfW) / fov;
+
+      const ly = sy * cosP + sinP;
+      const lz = cosP - sy * sinP;
+      const rx = sx * cosY + lz * sinY;
+      const ry = ly;
+      const rz = -sx * sinY + lz * cosY;
+      const rLen = Math.hypot(rx, ry, rz);
+      const dx = rx / rLen, dy = ry / rLen, dz = rz / rLen;
+
+      let bestT = maxDist;
+      let hitType = 'sky';
+      let hx = 0, hy = 0, hz = 0;
+
+      if (dy < -0.001) {
+        const t = -camY / dy;
+        if (t > 0 && t < bestT) {
+          bestT = t; hitType = 'floor';
+          hx = camX + dx * t; hy = 0; hz = camZ + dz * t;
+        }
+      }
+      if (dy > 0.001) {
+        const t = (6.0 - camY) / dy;
+        if (t > 0 && t < bestT) {
+          const cx = camX + dx * t;
+          const cz = camZ + dz * t;
+          const zMod = ((cz % 4.5) + 4.5) % 4.5;
+          const isOpen = zMod > 1.2 && zMod < 3.3 && cz > 1.0 && cz < 20.0 && Math.abs(cx) < 2.2;
+          if (!isOpen) {
+            bestT = t; hitType = 'ceiling';
+            hx = cx; hy = 6.0; hz = cz;
+          }
+        }
+      }
+      if (Math.abs(dx) > 0.001) {
+        const wallX = dx > 0 ? 5.5 : -5.5;
+        const t = (wallX - camX) / dx;
+        if (t > 0 && t < bestT) {
+          bestT = t; hitType = 'wall';
+          hx = wallX; hy = camY + dy * t; hz = camZ + dz * t;
+        }
+      }
+      if (dz > 0.001) {
+        const t = (22.0 - camZ) / dz;
+        if (t > 0 && t < bestT) {
+          bestT = t; hitType = 'backwall';
+          hx = camX + dx * t; hy = camY + dy * t; hz = 22.0;
+        }
+      }
+
+      zBuf[idx] = bestT;
+      const fogF = Math.min(1.0, Math.pow(bestT / maxDist, 1.4));
+
+      if (hitType === 'sky') {
+        rBuf[idx] = theme.skyHorizon[0] * 1.1;
+        gBuf[idx] = theme.skyHorizon[1] * 1.1;
+        bBuf[idx] = theme.skyHorizon[2] * 1.1;
+      } else {
+        const lit = 0.24 + sampleTempleLight(hx, hy, hz) * 1.15;
+        let tile = 0;
+        if (hitType === 'floor') {
+          tile = ((Math.floor(hx * 1.2) + Math.floor(hz * 1.2)) & 1) ? 14 : -10;
+        } else {
+          tile = ((Math.floor(hy * 1.5) + Math.floor((hx + hz) * 1.2)) & 1) ? 10 : -8;
+        }
+        const sr = (72 + tile) * lit;
+        const sg = (78 + tile) * lit;
+        const sb = (96 + tile * 1.2) * lit;
+
+        rBuf[idx] = sr * (1 - fogF) + 28 * fogF;
+        gBuf[idx] = sg * (1 - fogF) + 34 * fogF;
+        bBuf[idx] = sb * (1 - fogF) + 48 * fogF;
+      }
+    }
+  }
+
+  function project(wx, wy, wz) {
+    const tx = wx - camX, ty = wy - camY, tz = wz - camZ;
+    const rx = tx * cosY - tz * sinY;
+    const rz0 = tx * sinY + tz * cosY;
+    const ry = ty * cosP - rz0 * sinP;
+    const rz = ty * sinP + rz0 * cosP;
+    if (rz <= 0.25) return null;
+    return { sx: halfW + (rx / rz) * fov, sy: halfH - (ry / rz) * fov, rz };
+  }
+
+  const pillars = [];
+  for (let z = 3.5; z <= 18.5; z += 4.5) {
+    pillars.push({ x: -3.2, z, r: 0.48, h: 6.0 });
+    pillars.push({ x:  3.2, z, r: 0.48, h: 6.0 });
+  }
+
+  for (const pl of pillars) {
+    const base = project(pl.x, 0, pl.z);
+    const top = project(pl.x, pl.h, pl.z);
+    if (!base || !top) continue;
+    const screenR = Math.max(2, (pl.r / base.rz) * fov);
+    const minX = Math.max(0, Math.floor(base.sx - screenR));
+    const maxX = Math.min(W - 1, Math.ceil(base.sx + screenR));
+    const minY = Math.max(0, Math.floor(top.sy));
+    const maxY = Math.min(H - 1, Math.ceil(base.sy));
+    const fogF = Math.min(1.0, Math.pow(base.rz / maxDist, 1.4));
+
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const nx = (x - base.sx) / screenR;
+        if (Math.abs(nx) > 1.0) continue;
+        const nz = Math.sqrt(Math.max(0, 1 - nx * nx));
+        const depth = base.rz - nz * pl.r;
+        const idx = y * W + x;
+        if (depth < zBuf[idx]) {
+          zBuf[idx] = depth;
+          const sunLit = Math.max(0, nx * sdx - nz * sdz);
+          const flute = Math.cos(nx * Math.PI * 5) * 8;
+          const shade = 0.28 + sunLit * 0.95;
+          rBuf[idx] = ((86 + flute) * shade) * (1 - fogF) + 28 * fogF;
+          gBuf[idx] = ((92 + flute) * shade) * (1 - fogF) + 34 * fogF;
+          bBuf[idx] = ((112 + flute) * shade) * (1 - fogF) + 48 * fogF;
+        }
+      }
+    }
+  }
+
+  const bob = Math.sin(state.time * 2.5) * 0.16;
+  const cry = project(0, 1.85 + bob, 11.2);
+  if (cry && cry.rz > 0.5) {
+    const cr = (0.65 / cry.rz) * fov;
+    const x0 = Math.max(0, Math.floor(cry.sx - cr));
+    const x1 = Math.min(W - 1, Math.ceil(cry.sx + cr));
+    const y0 = Math.max(0, Math.floor(cry.sy - cr * 1.5));
+    const y1 = Math.min(H - 1, Math.ceil(cry.sy + cr * 1.5));
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const dx = Math.abs(x - cry.sx) / cr;
+        const dy = Math.abs(y - cry.sy) / (cr * 1.5);
+        if (dx + dy < 1.0) {
+          const idx = y * W + x;
+          if (cry.rz < zBuf[idx]) {
+            zBuf[idx] = cry.rz;
+            const facet = (x < cry.sx) ? 1.15 : 0.75;
+            rBuf[idx] = 95 * facet;
+            gBuf[idx] = 225 * facet;
+            bBuf[idx] = 248 * facet;
+          }
+        }
+      }
+    }
+  }
+
+  if (state.godrays) {
+    const steps = state.steps;
+    const rayR = theme.ray[0];
+    const rayG = theme.ray[1];
+    const rayB = theme.ray[2];
+
+    for (let y = 0; y < H; y++) {
+      const sy = -(y - halfH) / fov;
+      for (let x = 0; x < W; x++) {
+        const idx = y * W + x;
+        const sx = (x - halfW) / fov;
+
+        const ly = sy * cosP + sinP;
+        const lz = cosP - sy * sinP;
+        const rx = sx * cosY + lz * sinY;
+        const ry = ly;
+        const rz = -sx * sinY + lz * cosY;
+        const rLen = Math.hypot(rx, ry, rz);
+        const dx = rx / rLen, dy = ry / rLen, dz = rz / rLen;
+
+        const marchMax = Math.min(zBuf[idx], 22.0);
+        const stepSize = marchMax / steps;
+
+        let jitterOffset = 0.5;
+        if (state.jitter) {
+          const bayerVal = BAYER4[(y & 3) * 4 + (x & 3)] / 16.0;
+          const hash = ((x * 73 + y * 151) & 15) / 16.0;
+          jitterOffset = bayerVal * 0.7 + hash * 0.3;
+        }
+
+        let accum = 0.0;
+        for (let s = 0; s < steps; s++) {
+          const t = (s + jitterOffset) * stepSize;
+          if (t >= marchMax) break;
+          const wx = camX + dx * t;
+          const wy = camY + dy * t;
+          const wz = camZ + dz * t;
+          if (wy < 0 || wy > 6.0) continue;
+          accum += sampleTempleLight(wx, wy, wz) * stepSize;
+        }
+
+        const intensity = Math.min(1.15, accum * 0.11 * state.density);
+        rBuf[idx] += rayR * intensity;
+        gBuf[idx] += rayG * intensity;
+        bBuf[idx] += rayB * intensity;
+      }
+    }
+  }
+}
+
+function getDitherNorm(x, y) {
+  if (state.dither === 'bayer4') {
+    return (BAYER4[(y & 3) * 4 + (x & 3)] / 16.0) - 0.5;
+  } else if (state.dither === 'bayer2') {
+    const b2 = ((y & 1) * 2 + (x & 1));
+    const map2 = [0, 2, 3, 1];
+    return (map2[b2] / 4.0) - 0.5;
+  }
+  return 0.0;
+}
+
+// Quantize & Present Frame:
+// 1. MSX2+ SCREEN 12 (YJK 4-pixel horizontal chroma sharing + 5-bit Y)
+// 2. MSX2 SCREEN 8 (GRB 3-3-2 256 colors)
+// 3. TIC-80 Sweetie-16 (16 colors)
+function presentFrame() {
+  const usedColors = new Set();
+
+  if (state.palette === 'sc12') {
+    // MSX2+ V9958 SCREEN 12 (YJK Natural Picture Mode - 19,268 colors)
+    // Process in 4-pixel horizontal blocks (x = 0, 4, 8, ... 252)
+    const yVals = new Float32Array(4);
+    const jVals = new Float32Array(4);
+    const kVals = new Float32Array(4);
+
+    for (let y = 0; y < H; y++) {
+      for (let bx = 0; bx < W; bx += 4) {
+        let sumJ = 0;
+        let sumK = 0;
+
+        for (let i = 0; i < 4; i++) {
+          const x = bx + i;
+          const idx = y * W + x;
+          const dither = getDitherNorm(x, y) * 8.0;
+
+          // Clamp RGB to 5-bit hardware range [0..31]
+          const r5 = Math.max(0, Math.min(31, (rBuf[idx] + dither) * (31 / 255)));
+          const g5 = Math.max(0, Math.min(31, (gBuf[idx] + dither) * (31 / 255)));
+          const b5 = Math.max(0, Math.min(31, (bBuf[idx] + dither) * (31 / 255)));
+
+          // V9958 RGB -> YJK equations
+          const y5 = Math.round(r5 * 0.5 + g5 * 0.25 + b5 * 0.125);
+          yVals[i] = Math.max(0, Math.min(31, y5));
+          jVals[i] = r5 - yVals[i];
+          kVals[i] = g5 - yVals[i];
+
+          sumJ += jVals[i];
+          sumK += kVals[i];
+        }
+
+        // Shared 6-bit signed J and K [-32 .. +31] across the 4-pixel block
+        const sharedJ = Math.max(-32, Math.min(31, Math.round(sumJ * 0.25)));
+        const sharedK = Math.max(-32, Math.min(31, Math.round(sumK * 0.25)));
+
+        for (let i = 0; i < 4; i++) {
+          const x = bx + i;
+          const idx = y * W + x;
+          const Y = yVals[i];
+
+          // V9958 YJK -> RGB hardware decode equations
+          const r5 = Math.max(0, Math.min(31, Math.round(Y + sharedJ)));
+          const g5 = Math.max(0, Math.min(31, Math.round(Y + sharedK)));
+          const b5 = Math.max(0, Math.min(31, Math.round((5 * Y) / 4 - sharedJ / 2 - sharedK / 4)));
+
+          const outR = Math.round((r5 * 255) / 31);
+          const outG = Math.round((g5 * 255) / 31);
+          const outB = Math.round((b5 * 255) / 31);
+
+          usedColors.add((r5 << 10) | (g5 << 5) | b5);
+
+          const pIdx = idx * 4;
+          pixels[pIdx] = outR;
+          pixels[pIdx + 1] = outG;
+          pixels[pIdx + 2] = outB;
+          pixels[pIdx + 3] = 255;
+        }
+      }
+    }
+
+    ctx.putImageData(imgData, 0, 0);
+    document.getElementById('colBadge').textContent = `256×192 | ${usedColors.size} COLS (SC12 YJK)`;
+    return;
+  }
+
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const idx = y * W + x;
+      const ditherNorm = getDitherNorm(x, y);
+      let outR, outG, outB;
+
+      if (state.palette === 'msx2') {
+        const stepRG = 255 / 7;
+        const stepB = 255 / 3;
+        const r = Math.max(0, Math.min(255, rBuf[idx] + ditherNorm * stepRG));
+        const g = Math.max(0, Math.min(255, gBuf[idx] + ditherNorm * stepRG));
+        const b = Math.max(0, Math.min(255, bBuf[idx] + ditherNorm * stepB));
+
+        const r3 = Math.round((r / 255) * 7);
+        const g3 = Math.round((g / 255) * 7);
+        const b2 = Math.round((b / 255) * 3);
+
+        outR = Math.round((r3 * 255) / 7);
+        outG = Math.round((g3 * 255) / 7);
+        outB = Math.round((b2 * 255) / 3);
+
+        const code = (g3 << 5) | (r3 << 2) | b2;
+        usedColors.add(code);
+      } else {
+        const spread = 34.0;
+        const r = Math.max(0, Math.min(255, rBuf[idx] + ditherNorm * spread));
+        const g = Math.max(0, Math.min(255, gBuf[idx] + ditherNorm * spread));
+        const b = Math.max(0, Math.min(255, bBuf[idx] + ditherNorm * spread));
+
+        let bestIdx = 0;
+        let bestDist = 1e9;
+        for (let c = 0; c < 16; c++) {
+          const pr = SWEETIE16[c][0];
+          const pg = SWEETIE16[c][1];
+          const pb = SWEETIE16[c][2];
+          const dr = r - pr, dg = g - pg, db = b - pb;
+          const dist = dr * dr * 0.30 + dg * dg * 0.59 + db * db * 0.11;
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestIdx = c;
+          }
+        }
+        outR = SWEETIE16[bestIdx][0];
+        outG = SWEETIE16[bestIdx][1];
+        outB = SWEETIE16[bestIdx][2];
+        usedColors.add(bestIdx);
+      }
+
+      const pIdx = idx * 4;
+      pixels[pIdx] = outR;
+      pixels[pIdx + 1] = outG;
+      pixels[pIdx + 2] = outB;
+      pixels[pIdx + 3] = 255;
+    }
+  }
+
+  ctx.putImageData(imgData, 0, 0);
+  const maxCols = state.palette === 'msx2' ? '256 COLS (SC8)' : '16 COLS (TIC-80)';
+  document.getElementById('colBadge').textContent = `256×192 | ${usedColors.size}/${maxCols}`;
+}
+
+let lastFrameTime = performance.now();
+let frameCount = 0;
+let fpsAccum = 0;
+
+function loop(now) {
+  const dt = Math.min(0.1, (now - lastFrameTime) / 1000);
+  lastFrameTime = now;
+  state.time += dt;
+
+  const theme = getThemeColors();
+  if (state.scene === 'forest') {
+    renderForest(theme);
+  } else {
+    renderTemple(theme);
+  }
+  presentFrame();
+
+  frameCount++;
+  fpsAccum += dt;
+  if (fpsAccum >= 0.5) {
+    document.getElementById('fpsBadge').textContent = Math.round(frameCount / fpsAccum) + ' FPS';
+    frameCount = 0;
+    fpsAccum = 0;
+  }
+
+  requestAnimationFrame(loop);
+}
+
+updateHUD();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
