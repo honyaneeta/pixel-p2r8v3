@@ -1,1299 +1,1386 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MSX 256x192 / TIC-80 3D Stencil Clipping Viewer</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #0f111a;
-            color: #f4f4f4;
-            user-select: none;
-            -webkit-user-select: none;
-        }
-        .mono {
-            font-family: 'JetBrains Mono', monospace;
-        }
-        canvas.pixelated {
-            image-rendering: -moz-crisp-edges;
-            image-rendering: -webkit-crisp-edges;
-            image-rendering: pixelated;
-            image-rendering: crisp-edges;
-        }
-        .crt-overlay {
-            background: linear-gradient(
-                rgba(18, 16, 16, 0) 50%, 
-                rgba(0, 0, 0, 0.25) 50%
-            );
-            background-size: 100% 4px;
-            pointer-events: none;
-        }
-        #viewport-container,
-        #screen {
-            touch-action: none;
-        }
-        input[type="range"] {
-            accent-color: #73eff7;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>MSX / TIC-80 Low-Poly Mario &amp; Primitives 3D Stencil Viewer</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      background-color: #1a1c2c;
+      color: #f4f4f4;
+      font-family: 'Courier New', Courier, monospace;
+      overflow: hidden;
+      touch-action: none;
+    }
+    #app {
+      display: flex;
+      flex-direction: row;
+      width: 100%;
+      height: 100%;
+    }
+    #viewport-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #141624;
+      position: relative;
+      touch-action: none;
+      padding: 8px;
+    }
+    #screen {
+      width: 100%;
+      height: 100%;
+      max-width: calc((100vh - 16px) * (256 / 192));
+      max-height: calc((100vw - 16px) * (192 / 256));
+      aspect-ratio: 256 / 192;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      border: 2px solid #566c86;
+      background: #1a1c2c;
+      touch-action: none;
+      cursor: grab;
+    }
+    #screen:active {
+      cursor: grabbing;
+    }
+    #hud-overlay {
+      position: absolute;
+      top: 14px;
+      left: 16px;
+      font-size: 11px;
+      line-height: 1.4;
+      color: #94b0c2;
+      pointer-events: none;
+      text-shadow: 1px 1px 0 #1a1c2c;
+    }
+    #controls {
+      width: 276px;
+      background: #222538;
+      border-left: 2px solid #333c57;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      overflow-y: auto;
+      font-size: 12px;
+      touch-action: pan-y;
+    }
+    .panel-title {
+      font-size: 12px;
+      font-weight: bold;
+      color: #ffcd75;
+      border-bottom: 1px solid #333c57;
+      padding-bottom: 3px;
+      letter-spacing: 0.5px;
+    }
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .control-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    label {
+      color: #94b0c2;
+      font-size: 11px;
+    }
+    button {
+      background: #333c57;
+      color: #f4f4f4;
+      border: 1px solid #566c86;
+      padding: 5px 6px;
+      font-family: inherit;
+      font-size: 11px;
+      cursor: pointer;
+      border-radius: 2px;
+      transition: background 0.1s;
+    }
+    button:hover {
+      background: #3b5dc9;
+    }
+    button.active {
+      background: #b13e53;
+      border-color: #ffcd75;
+      color: #ffffff;
+      font-weight: bold;
+    }
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .btn-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4px;
+    }
+    .btn-grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+    }
+    .btn-grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 4px;
+    }
+    input[type="range"] {
+      width: 100%;
+      accent-color: #ef7d57;
+      cursor: pointer;
+    }
+    .palette-grid {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 3px;
+    }
+    .swatch {
+      width: 100%;
+      aspect-ratio: 1;
+      border: 1px solid #1a1c2c;
+      cursor: pointer;
+    }
+    .swatch.selected {
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 0 1px #1a1c2c;
+    }
+    @media (max-width: 720px) {
+      #app {
+        flex-direction: column;
+      }
+      #viewport-container {
+        flex: none;
+        height: 54vh;
+      }
+      #screen {
+        max-width: calc((54vh - 16px) * (256 / 192));
+        max-height: calc(100vw - 16px);
+      }
+      #controls {
+        width: 100%;
+        flex: 1;
+        border-left: none;
+        border-top: 2px solid #333c57;
+      }
+    }
+  </style>
 </head>
-<body class="min-h-screen flex flex-col items-center justify-center p-2 sm:p-5">
+<body>
+<div id="app">
+  <div id="viewport-container">
+    <canvas id="screen" width="256" height="192"></canvas>
+    <div id="hud-overlay">
+      MSX 256x192 | TIC-80 16-COL<br>
+      MODEL: <span id="hud-model">MARIO</span> | 3-PASS STENCIL<br>
+      <span id="hud-stats">TRIS: 0 | FPS: 60</span>
+    </div>
+  </div>
 
-    <!-- メインコンテナ -->
-    <div class="w-full max-w-5xl bg-[#1a1c2c] border-2 border-[#333c57] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
-        
-        <!-- ヘッダーバー -->
-        <header class="bg-[#29366f] px-4 py-2.5 border-b-2 border-[#333c57] flex flex-wrap items-center justify-between gap-2">
-            <div class="flex items-center gap-2.5">
-                <div class="w-3 h-3 rounded-full bg-[#b13e53]"></div>
-                <div class="w-3 h-3 rounded-full bg-[#ffcd75]"></div>
-                <div class="w-3 h-3 rounded-full bg-[#38b764]"></div>
-                <h1 class="text-xs sm:text-sm font-bold tracking-wider text-[#f4f4f4] mono ml-1">
-                    MSX<span class="text-[#73eff7]">256x192</span> // TIC-80 <span class="text-[#ffcd75]">STENCIL CLIPPING</span>
-                </h1>
-            </div>
-            <div class="flex items-center gap-2 text-[11px] mono text-[#94b0c2]">
-                <span class="bg-[#1a1c2c] px-2 py-0.5 rounded border border-[#333c57]">
-                    FPS: <strong id="stat-fps" class="text-[#a7f070]">60</strong>
-                </span>
-                <span class="bg-[#1a1c2c] px-2 py-0.5 rounded border border-[#333c57]">
-                    Z+STENCIL: <strong class="text-[#73eff7]">32b+8b</strong>
-                </span>
-            </div>
-        </header>
-
-        <!-- メインコンテンツエリア -->
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-0">
-            
-            <!-- 左側：256x192 ソフトウェアレンダリング ビューポート -->
-            <div class="lg:col-span-7 bg-[#12131f] p-3 sm:p-5 flex flex-col items-center justify-center border-b-2 lg:border-b-0 lg:border-r-2 border-[#333c57]">
-                
-                <!-- 4:3 アスペクト比フレーム -->
-                <div class="relative w-full max-w-[512px] aspect-[4/3] bg-[#1a1c2c] rounded-xl border-4 border-[#333c57] shadow-[0_0_30px_rgba(0,0,0,0.65)] overflow-hidden cursor-grab active:cursor-grabbing" id="viewport-container">
-                    <canvas id="screen" width="256" height="192" class="w-full h-full block pixelated"></canvas>
-                    <div id="crt-effect" class="crt-overlay absolute inset-0 hidden"></div>
-                    
-                    <!-- ステータスバッジ -->
-                    <div class="absolute top-2 left-2 flex flex-wrap gap-1.5 pointer-events-none">
-                        <span id="badge-mode" class="bg-[#1a1c2c]/85 text-[#a7f070] text-[10px] mono px-2 py-0.5 rounded border border-[#38b764]/50">
-                            MODE: LIT + CAP
-                        </span>
-                        <span id="badge-stencil" class="bg-[#1a1c2c]/85 text-[#ffcd75] text-[10px] mono px-2 py-0.5 rounded border border-[#ffcd75]/40">
-                            CLIP: ON
-                        </span>
-                    </div>
-
-                    <div class="absolute bottom-2 left-2 bg-[#1a1c2c]/80 text-[#94b0c2] text-[10px] mono px-2 py-0.5 rounded border border-[#566c86]/50 pointer-events-none">
-                        1-FINGER ROTATE / 2-FINGER PINCH
-                    </div>
-                </div>
-
-                <!-- ビューモード切替バー -->
-                <div class="grid grid-cols-3 gap-1.5 mt-3 w-full max-w-[512px]">
-                    <button data-view="normal" class="view-btn py-1.5 px-2 bg-[#3b5dc9] text-[#f4f4f4] text-[11px] mono font-bold rounded-lg border border-[#73eff7]/60 transition">
-                        1. NORMAL + CAP
-                    </button>
-                    <button data-view="stencil" class="view-btn py-1.5 px-2 bg-[#25283d] hover:bg-[#333c57] text-[#94b0c2] text-[11px] mono font-bold rounded-lg border border-[#333c57] transition">
-                        2. STENCIL MASK
-                    </button>
-                    <button data-view="zbuffer" class="view-btn py-1.5 px-2 bg-[#25283d] hover:bg-[#333c57] text-[#94b0c2] text-[11px] mono font-bold rounded-lg border border-[#333c57] transition">
-                        3. Z-BUFFER
-                    </button>
-                </div>
-
-                <!-- クイックアクションボタン -->
-                <div class="flex flex-wrap items-center justify-center gap-2 mt-2.5 w-full max-w-[512px]">
-                    <button id="btn-reset" class="px-3 py-1.5 bg-[#333c57] hover:bg-[#566c86] active:scale-95 text-[11px] mono font-semibold rounded-lg transition text-[#f4f4f4]">
-                        RESET CAM
-                    </button>
-                    <button id="btn-pose" class="px-3 py-1.5 bg-[#333c57] hover:bg-[#566c86] active:scale-95 text-[11px] mono font-semibold rounded-lg transition text-[#f4f4f4]">
-                        POSE: IDLE
-                    </button>
-                    <button id="btn-autorotate" class="px-3 py-1.5 bg-[#38b764] active:scale-95 text-[11px] mono font-semibold rounded-lg transition text-[#1a1c2c]">
-                        AUTO ROT: ON
-                    </button>
-                </div>
-            </div>
-
-            <!-- 右側：クリッピング面 & ステンシルキャップ設定パネル -->
-            <div class="lg:col-span-5 bg-[#1a1c2c] p-3.5 sm:p-4 flex flex-col justify-between gap-3.5">
-                
-                <!-- 1. クリッピング平面コントロール -->
-                <div class="bg-[#25283d] p-3 rounded-xl border border-[#333c57] space-y-3">
-                    <div class="flex items-center justify-between">
-                        <h2 class="text-xs font-bold uppercase tracking-wider text-[#73eff7] mono flex items-center gap-2">
-                            <span class="w-2 h-2 bg-[#73eff7] rounded-full"></span>
-                            CLIPPING & STENCIL CAP
-                        </h2>
-                        <label class="flex items-center gap-1.5 cursor-pointer text-xs mono font-bold text-[#f4f4f4]">
-                            <input type="checkbox" id="opt-clip-enable" checked class="w-4 h-4 accent-[#38b764] rounded">
-                            <span>ACTIVE</span>
-                        </label>
-                    </div>
-
-                    <!-- カット軸（平面タイプ）選択 -->
-                    <div>
-                        <span class="text-[11px] text-[#94b0c2] block mb-1.5 font-medium">クリッピング平面 (Cut Plane Axis)</span>
-                        <div class="grid grid-cols-4 gap-1.5">
-                            <button data-axis="y" class="axis-btn py-1.5 bg-[#3b5dc9] text-[#f4f4f4] text-[11px] mono font-bold rounded-lg border border-[#73eff7]/50 transition">
-                                Y (水平)
-                            </button>
-                            <button data-axis="x" class="axis-btn py-1.5 bg-[#1a1c2c] hover:bg-[#333c57] text-[#94b0c2] text-[11px] mono font-bold rounded-lg border border-[#333c57] transition">
-                                X (左右)
-                            </button>
-                            <button data-axis="z" class="axis-btn py-1.5 bg-[#1a1c2c] hover:bg-[#333c57] text-[#94b0c2] text-[11px] mono font-bold rounded-lg border border-[#333c57] transition">
-                                Z (前後)
-                            </button>
-                            <button data-axis="diag" class="axis-btn py-1.5 bg-[#1a1c2c] hover:bg-[#333c57] text-[#94b0c2] text-[11px] mono font-bold rounded-lg border border-[#333c57] transition">
-                                斜め切
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- スライス位置スライダー -->
-                    <div>
-                        <div class="flex justify-between text-[11px] mono mb-1">
-                            <span class="text-[#94b0c2]">スライス位置 (Plane Offset)</span>
-                            <span id="val-offset" class="text-[#ffcd75] font-bold">+0.85</span>
-                        </div>
-                        <input type="range" id="slider-offset" min="-1.0" max="2.3" step="0.02" value="0.85" class="w-full h-2 bg-[#1a1c2c] rounded-lg cursor-pointer">
-                    </div>
-
-                    <!-- 反転 & 補助グリッド表示 -->
-                    <div class="grid grid-cols-2 gap-2 pt-0.5">
-                        <button id="btn-flip-plane" class="py-1.5 px-2.5 bg-[#1a1c2c] hover:bg-[#333c57] active:scale-95 text-[11px] mono font-semibold rounded-lg border border-[#566c86]/60 text-[#f4f4f4] transition">
-                            ⇄ カット方向反転
-                        </button>
-                        <label class="flex items-center justify-center gap-1.5 py-1.5 px-2 bg-[#1a1c2c] rounded-lg border border-[#333c57] cursor-pointer text-[11px] mono text-[#f4f4f4]">
-                            <input type="checkbox" id="opt-plane-grid" checked class="w-3.5 h-3.5 accent-[#73eff7]">
-                            <span>平面枠表示</span>
-                        </label>
-                    </div>
-                </div>
-
-                <!-- 2. 切断面（ステンシルキャップ）塗りつぶしカラー選択 -->
-                <div class="bg-[#25283d] p-3 rounded-xl border border-[#333c57]">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-xs font-bold text-[#ffcd75] mono flex items-center gap-1.5">
-                            <span class="w-2 h-2 bg-[#ffcd75] rounded-full"></span>
-                            CAP FILL COLOR (断面色)
-                        </span>
-                        <span id="val-cap-color" class="text-[10px] mono px-2 py-0.5 rounded bg-[#1a1c2c] text-[#f4f4f4] border border-[#333c57]">
-                            #3: #EF7D57
-                        </span>
-                    </div>
-                    <!-- TIC-80 16色スウォッチ（クリックで断面色を変更） -->
-                    <div id="palette-grid" class="grid grid-cols-8 gap-1.5 p-2 bg-[#12131f] rounded-lg border border-[#333c57]">
-                        <!-- JSで生成 -->
-                    </div>
-                    <div class="mt-2 flex items-center justify-between text-[11px] text-[#94b0c2]">
-                        <label class="flex items-center gap-1.5 cursor-pointer">
-                            <input type="checkbox" id="opt-cap-grid" checked class="w-3.5 h-3.5 accent-[#ffcd75]">
-                            <span>断面に方眼グリッド模様を入れる</span>
-                        </label>
-                    </div>
-                </div>
-
-                <!-- 3. レンダリング品質オプション -->
-                <div class="grid grid-cols-2 gap-2">
-                    <label class="flex items-center justify-between p-2 rounded-xl bg-[#25283d] border border-[#333c57] cursor-pointer text-xs">
-                        <span class="text-[#f4f4f4] font-medium">4x4 Bayerディザ</span>
-                        <input type="checkbox" id="opt-dither" checked class="w-4 h-4 accent-[#38b764]">
-                    </label>
-                    <label class="flex items-center justify-between p-2 rounded-xl bg-[#25283d] border border-[#333c57] cursor-pointer text-xs">
-                        <span class="text-[#f4f4f4] font-medium">CRT走査線</span>
-                        <input type="checkbox" id="opt-crt" class="w-4 h-4 accent-[#ffcd75]">
-                    </label>
-                </div>
-
-            </div>
-        </div>
+  <div id="controls">
+    <div class="panel-title">MODEL SELECT</div>
+    <div class="btn-grid-3">
+      <button class="model-btn active" data-model="mario">MARIO</button>
+      <button class="model-btn" data-model="cube">CUBE</button>
+      <button class="model-btn" data-model="sphere">SPHERE</button>
+      <button class="model-btn" data-model="cylinder">CYLINDER</button>
+      <button class="model-btn" data-model="cone">CONE</button>
+      <button class="model-btn" data-model="torus">TORUS</button>
     </div>
 
+    <div class="panel-title">VIEW &amp; POSE</div>
+    <div class="btn-grid-2">
+      <button id="btn-autorot" class="active">AUTO ROTATE</button>
+      <button id="btn-pose">POSE: IDLE</button>
+    </div>
+    <div class="btn-grid">
+      <button id="btn-mode-color" class="active">COLOR</button>
+      <button id="btn-mode-wire">WIRE</button>
+      <button id="btn-mode-depth">Z-BUF</button>
+      <button id="btn-mode-stencil">STENCIL</button>
+    </div>
+
+    <div class="panel-title">STENCIL CLIPPING PLANE</div>
+    <div class="control-row">
+      <button id="btn-clip-toggle" class="active" style="flex:1;">CLIPPING: ON</button>
+      <button id="btn-clip-flip">FLIP ⇄</button>
+    </div>
+    <div class="btn-grid">
+      <button class="axis-btn active" data-axis="y">Y (水平)</button>
+      <button class="axis-btn" data-axis="x">X (左右)</button>
+      <button class="axis-btn" data-axis="z">Z (前後)</button>
+      <button class="axis-btn" data-axis="diag">斜め切</button>
+    </div>
+    <div class="control-group">
+      <div class="control-row">
+        <label>SLICE OFFSET</label>
+        <span id="clip-val-label" style="font-size:11px;color:#ffcd75;">0.15</span>
+      </div>
+      <input type="range" id="clip-slider" min="-1.6" max="1.6" step="0.02" value="0.15" />
+    </div>
+
+    <div class="control-group">
+      <label>CAP FILL COLOR (TIC-80 PALETTE)</label>
+      <div class="palette-grid" id="cap-palette"></div>
+    </div>
+
+    <div class="control-group" style="margin-top:auto;">
+      <button id="btn-reset">RESET CAMERA</button>
+    </div>
+  </div>
+</div>
+
 <script>
-/**
- * ============================================================================
- * 1. MSX 解像度 & TIC-80 Sweetie-16 16色パレット定義
- * ============================================================================
- */
-const WIDTH = 256;   // MSX 画面横幅
-const HEIGHT = 192;  // MSX 画面高さ
-const NUM_PIXELS = WIDTH * HEIGHT;
+(() => {
+  const W = 256;
+  const H = 192;
+  const SIZE = W * H;
 
-// TIC-80 標準 16色パレット (Sweetie-16)
-const TIC80_HEX = [
-    "#1a1c2c", // 0: Black / Deep Navy
-    "#5d275d", // 1: Dark Purple
-    "#b13e53", // 2: Dark Red
-    "#ef7d57", // 3: Orange / Salmon
-    "#ffcd75", // 4: Yellow / Gold
-    "#a7f070", // 5: Light Green
-    "#38b764", // 6: Green
-    "#257179", // 7: Dark Teal
-    "#29366f", // 8: Dark Blue
-    "#3b5dc9", // 9: Blue
-    "#41a6f6", // 10: Light Blue
-    "#73eff7", // 11: Cyan
-    "#f4f4f4", // 12: White
-    "#94b0c2", // 13: Light Grey
-    "#566c86", // 14: Grey
-    "#333c57"  // 15: Dark Grey
-];
+  const canvas = document.getElementById('screen');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const imgData = ctx.createImageData(W, H);
+  const pixelBuf = new Uint32Array(imgData.data.buffer);
+  const zBuffer = new Float32Array(SIZE);
+  const stencilBuffer = new Uint8Array(SIZE);
 
-const PALETTE_U32 = new Uint32Array(16);
-const PALETTE_RGB = [];
+  // TIC-80 Sweetie-16 Palette (RGB + Little-Endian ABGR Uint32)
+  const SWEETIE16 = [
+    [0x1a, 0x1c, 0x2c], // 0: Black / Deep Navy
+    [0x5d, 0x27, 0x5d], // 1: Dark Purple
+    [0xb1, 0x3e, 0x53], // 2: Crimson Red
+    [0xef, 0x7d, 0x57], // 3: Orange / Highlight Red
+    [0xff, 0xcd, 0x75], // 4: Yellow / Gold
+    [0xa7, 0xf0, 0x70], // 5: Lime Green
+    [0x38, 0xb7, 0x64], // 6: Emerald Green
+    [0x25, 0x71, 0x79], // 7: Dark Teal
+    [0x29, 0x36, 0x6f], // 8: Dark Blue
+    [0x3b, 0x5d, 0xc9], // 9: Royal Blue
+    [0x41, 0xa6, 0xf6], // 10: Sky Blue
+    [0x73, 0xef, 0xf7], // 11: Cyan
+    [0xf4, 0xf4, 0xf4], // 12: White
+    [0x94, 0xb0, 0xc2], // 13: Light Grey
+    [0x56, 0x6c, 0x86], // 14: Slate Grey
+    [0x33, 0x3c, 0x57]  // 15: Dark Slate
+  ];
 
-TIC80_HEX.forEach((hex, i) => {
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    PALETTE_RGB.push({ r, g, b, hex });
-    // ImageData Uint32Array (リトルエンディアン: 0xAABBGGRR)
-    PALETTE_U32[i] = (255 << 24) | (b << 16) | (g << 8) | r;
-});
+  const PAL32 = new Uint32Array(16);
+  for (let i = 0; i < 16; i++) {
+    const [r, g, b] = SWEETIE16[i];
+    PAL32[i] = (255 << 24) | (b << 16) | (g << 8) | r;
+  }
 
-// 4x4 Bayer ディザリング行列
-const BAYER_4X4 = [
+  // 4x4 Bayer Matrix (0..15)
+  const BAYER4 = [
      0,  8,  2, 10,
     12,  4, 14,  6,
      3, 11,  1,  9,
     15,  7, 13,  5
-];
+  ];
 
-/**
- * ============================================================================
- * 2. フレームバッファ・Zバッファ・ステンシルバッファの確保
- * ============================================================================
- */
-const canvas = document.getElementById('screen');
-const ctx = canvas.getContext('2d', { alpha: false });
-const imgData = ctx.createImageData(WIDTH, HEIGHT);
+  // Material Shading Ramps (Dark -> Mid -> Bright -> Specular) in Sweetie-16 indices
+  const MATERIALS = {
+    red:      [1, 2, 3, 4],     // Hat & Shirt
+    blue:     [8, 9, 10, 11],   // Overalls
+    skin:     [3, 3, 4, 12],    // Face & Nose
+    hair:     [0, 15, 1, 14],   // Hair, Mustache, Brows
+    white:    [14, 13, 12, 12], // Gloves & Eye Whites
+    gold:     [3, 4, 4, 12],    // Buttons
+    boots:    [0, 15, 1, 3],    // Boots
+    pupil:    [0, 8, 9, 10],    // Eyes
+    emerald:  [7, 6, 5, 12],    // Primitive Green
+    cyan:     [8, 7, 11, 12],   // Primitive Cyan
+    purple:   [0, 1, 2, 3],     // Primitive Magenta/Purple
+    orange:   [1, 3, 4, 12]     // Primitive Orange
+  };
 
-const pixelBuffer   = new Uint32Array(imgData.data.buffer); // 256x192 カラーバッファ
-const zBuffer       = new Float32Array(NUM_PIXELS);         // 256x192 深度バッファ (32-bit Float)
-const stencilBuffer = new Uint8Array(NUM_PIXELS);           // 256x192 ステンシルバッファ (8-bit Uint)
+  // --- Mesh Builder Utilities (Closed Manifold Primitives & Lofts) ---
+  const baseTriangles = [];
 
-/**
- * ============================================================================
- * 3. 閉じた多様体（Watertight）ローポリ3Dマリオモデルの構築
- * ============================================================================
- * ※ステンシルバッファで表裏カウント（Surface +1 / Backface -1）を正確に行うため、
- *   すべてのパーツを閉じた六面体（12三角形）で構成しています。
- */
-const MATERIALS = {
-    RED:      { ramp: [1, 2, 2, 3],      inner: 1 }, // 赤い帽子・シャツ（裏面は暗紫）
-    BLUE:     { ramp: [0, 8, 9, 10],     inner: 0 }, // 青いオーバーオール
-    SKIN:     { ramp: [1, 2, 3, 4],      inner: 1 }, // 顔・鼻の肌色
-    HAIR:     { ramp: [0, 1, 2, 3],      inner: 0 }, // 髪・ヒゲ
-    SHOE:     { ramp: [0, 1, 2, 3],      inner: 0 }, // 茶色い靴
-    GLOVE:    { ramp: [14, 13, 12, 12],  inner: 15 },// 白い手袋
-    BUTTON:   { ramp: [3, 4, 4, 12],     inner: 3 }, // 黄色ボタン
-    EYE:      { ramp: [0, 0, 8, 11],     inner: 0 }, // 目
-    EMBLEM:   { ramp: [13, 12, 12, 12],  inner: 14 } // 帽子バッジ
-};
-
-let baseVertices = [];
-let triangles = [];
-
-function addBox(cx, cy, cz, sx, sy, sz, matKey, partTag = 'body') {
-    const hx = sx * 0.5, hy = sy * 0.5, hz = sz * 0.5;
-    const baseIdx = baseVertices.length;
-
-    baseVertices.push(
-        { x: cx - hx, y: cy - hy, z: cz - hz, part: partTag },
-        { x: cx + hx, y: cy - hy, z: cz - hz, part: partTag },
-        { x: cx + hx, y: cy + hy, z: cz - hz, part: partTag },
-        { x: cx - hx, y: cy + hy, z: cz - hz, part: partTag },
-        { x: cx - hx, y: cy - hy, z: cz + hz, part: partTag },
-        { x: cx + hx, y: cy - hy, z: cz + hz, part: partTag },
-        { x: cx + hx, y: cy + hy, z: cz + hz, part: partTag },
-        { x: cx - hx, y: cy + hy, z: cz + hz, part: partTag }
-    );
-
-    const faces = [
-        [4, 5, 6], [4, 6, 7], // +Z
-        [1, 0, 3], [1, 3, 2], // -Z
-        [5, 1, 2], [5, 2, 6], // +X
-        [0, 4, 7], [0, 7, 3], // -X
-        [7, 6, 2], [7, 2, 3], // +Y
-        [0, 1, 5], [0, 5, 4]  // -Y
-    ];
-
-    for (const [a, b, c] of faces) {
-        triangles.push({
-            i0: baseIdx + a,
-            i1: baseIdx + b,
-            i2: baseIdx + c,
-            mat: MATERIALS[matKey]
-        });
-    }
-}
-
-function addTaperedBox(cx, cy, cz, topW, botW, h, topD, botD, matKey, partTag = 'body') {
-    const hy = h * 0.5;
-    const htw = topW * 0.5, hbw = botW * 0.5;
-    const htd = topD * 0.5, hbd = botD * 0.5;
-    const baseIdx = baseVertices.length;
-
-    baseVertices.push(
-        { x: cx - hbw, y: cy - hy, z: cz - hbd, part: partTag },
-        { x: cx + hbw, y: cy - hy, z: cz - hbd, part: partTag },
-        { x: cx + htw, y: cy + hy, z: cz - htd, part: partTag },
-        { x: cx - htw, y: cy + hy, z: cz - htd, part: partTag },
-        { x: cx - hbw, y: cy - hy, z: cz + hbd, part: partTag },
-        { x: cx + hbw, y: cy - hy, z: cz + hbd, part: partTag },
-        { x: cx + htw, y: cy + hy, z: cz + htd, part: partTag },
-        { x: cx - htw, y: cy + hy, z: cz + htd, part: partTag }
-    );
-
-    const faces = [
-        [4, 5, 6], [4, 6, 7],
-        [1, 0, 3], [1, 3, 2],
-        [5, 1, 2], [5, 2, 6],
-        [0, 4, 7], [0, 7, 3],
-        [7, 6, 2], [7, 2, 3],
-        [0, 1, 5], [0, 5, 4]
-    ];
-
-    for (const [a, b, c] of faces) {
-        triangles.push({
-            i0: baseIdx + a,
-            i1: baseIdx + b,
-            i2: baseIdx + c,
-            mat: MATERIALS[matKey]
-        });
-    }
-}
-
-function buildMarioModel() {
-    baseVertices = [];
-    triangles = [];
-
-    // 1. 頭部・顔パーツ
-    addBox(0, 1.35, 0.02, 0.88, 0.78, 0.84, 'SKIN', 'head');
-    addBox(0, 1.28, 0.56, 0.28, 0.24, 0.28, 'SKIN', 'head'); // 鼻
-    addBox(0, 1.11, 0.49, 0.56, 0.13, 0.16, 'HAIR', 'head'); // 口ヒゲ
-    addBox(0, 1.15, 0.47, 0.42, 0.08, 0.14, 'HAIR', 'head');
-    addBox(-0.20, 1.44, 0.45, 0.11, 0.20, 0.06, 'EYE', 'head');
-    addBox( 0.20, 1.44, 0.45, 0.11, 0.20, 0.06, 'EYE', 'head');
-    addBox(-0.21, 1.58, 0.45, 0.15, 0.06, 0.06, 'HAIR', 'head');
-    addBox( 0.21, 1.58, 0.45, 0.15, 0.06, 0.06, 'HAIR', 'head');
-    addBox(-0.46, 1.36, -0.05, 0.10, 0.36, 0.34, 'HAIR', 'head'); // もみあげ
-    addBox( 0.46, 1.36, -0.05, 0.10, 0.36, 0.34, 'HAIR', 'head');
-    addBox(0,     1.34, -0.43, 0.86, 0.62, 0.14, 'HAIR', 'head'); // 後ろ髪
-    addBox(-0.48, 1.32, 0.02, 0.12, 0.24, 0.20, 'SKIN', 'head');  // 耳
-    addBox( 0.48, 1.32, 0.02, 0.12, 0.24, 0.20, 'SKIN', 'head');
-
-    // 2. 赤い帽子
-    addTaperedBox(0, 1.88, -0.02, 0.86, 0.96, 0.34, 0.84, 0.94, 'RED', 'head');
-    addBox(0, 2.08, -0.02, 0.64, 0.12, 0.64, 'RED', 'head');
-    addTaperedBox(0, 1.71, 0.46, 0.78, 0.88, 0.09, 0.46, 0.54, 'RED', 'head'); // ツバ
-    addBox(0, 1.88, 0.46, 0.24, 0.22, 0.08, 'EMBLEM', 'head'); // バッジ
-
-    // 3. 胴体・オーバーオール
-    addTaperedBox(0, 0.55, 0, 0.86, 0.96, 0.76, 0.64, 0.74, 'RED', 'torso');
-    addTaperedBox(0, 0.42, 0.02, 0.90, 1.02, 0.56, 0.70, 0.80, 'BLUE', 'torso');
-    addBox(0, 0.72, 0.34, 0.56, 0.32, 0.12, 'BLUE', 'torso');
-    addBox(-0.24, 0.82, 0.0, 0.14, 0.26, 0.68, 'BLUE', 'torso');
-    addBox( 0.24, 0.82, 0.0, 0.14, 0.26, 0.68, 'BLUE', 'torso');
-    addBox(-0.22, 0.72, 0.41, 0.12, 0.12, 0.06, 'BUTTON', 'torso');
-    addBox( 0.22, 0.72, 0.41, 0.12, 0.12, 0.06, 'BUTTON', 'torso');
-
-    // 4. 腕・白い手袋
-    addBox(-0.66, 0.62, 0.0, 0.38, 0.52, 0.36, 'RED', 'leftArm');
-    addBox(-0.68, 0.26, 0.04, 0.36, 0.32, 0.38, 'GLOVE', 'leftArm');
-    addBox( 0.66, 0.62, 0.0, 0.38, 0.52, 0.36, 'RED', 'rightArm');
-    addBox( 0.68, 0.26, 0.04, 0.36, 0.32, 0.38, 'GLOVE', 'rightArm');
-
-    // 5. 脚・茶色い靴
-    addBox(-0.27, -0.14, 0.0, 0.40, 0.58, 0.44, 'BLUE', 'leftLeg');
-    addTaperedBox(-0.27, -0.54, 0.12, 0.42, 0.46, 0.26, 0.64, 0.72, 'SHOE', 'leftLeg');
-    addBox( 0.27, -0.14, 0.0, 0.40, 0.58, 0.44, 'BLUE', 'rightLeg');
-    addTaperedBox( 0.27, -0.54, 0.12, 0.42, 0.46, 0.26, 0.64, 0.72, 'SHOE', 'rightLeg');
-}
-
-buildMarioModel();
-
-/**
- * ============================================================================
- * 4. レンダリング状態 & クリッピング平面定義
- * ============================================================================
- */
-let rotY = 0.55;
-let rotX = 0.25;
-let camDist = 4.3;
-let autoRotate = true;
-let useDither = true;
-let jumpPose = false;
-let viewMode = 'normal'; // 'normal' | 'stencil' | 'zbuffer'
-
-// クリッピング面設定（モデルローカル空間での平面方程式: dot(N, P) - offset <= 0 を残す）
-let clipEnabled = true;
-let clipAxis = 'y';      // 'y' | 'x' | 'z' | 'diag'
-let clipOffset = 0.85;   // スライス位置
-let clipFlip = false;    // 法線反転フラグ
-let showPlaneGrid = true;
-let capColorIdx = 3;     // デフォルト切断面カラー (#ef7d57 オレンジ)
-let capPatternGrid = true;
-
-// パレットUI生成（断面カラー選択用）
-const paletteGrid = document.getElementById('palette-grid');
-const valCapColor = document.getElementById('val-cap-color');
-const swatchElements = [];
-
-function updateCapColorUI(idx) {
-    capColorIdx = idx;
-    valCapColor.textContent = `#${idx.toString(16).toUpperCase()}: ${TIC80_HEX[idx].toUpperCase()}`;
-    valCapColor.style.borderColor = TIC80_HEX[idx];
-    swatchElements.forEach((el, i) => {
-        if (i === idx) {
-            el.classList.add('ring-2', 'ring-white', 'scale-110', 'z-10');
-        } else {
-            el.classList.remove('ring-2', 'ring-white', 'scale-110', 'z-10');
-        }
+  function pushTri(v0, v1, v2, mat, group = 'body') {
+    baseTriangles.push({
+      v: [v0, v1, v2],
+      mat,
+      group
     });
-}
+  }
 
-PALETTE_RGB.forEach((col, idx) => {
-    const swatch = document.createElement('button');
-    swatch.type = 'button';
-    swatch.className = 'aspect-square rounded border border-white/15 flex items-center justify-center text-[9px] mono font-bold shadow-sm transition-transform hover:scale-110 cursor-pointer';
-    swatch.style.backgroundColor = col.hex;
-    swatch.style.color = (col.r * 0.299 + col.g * 0.587 + col.b * 0.114) > 140 ? '#1a1c2c' : '#f4f4f4';
-    swatch.textContent = idx.toString(16).toUpperCase();
-    swatch.addEventListener('click', () => updateCapColorUI(idx));
-    paletteGrid.appendChild(swatch);
-    swatchElements.push(swatch);
-});
-updateCapColorUI(capColorIdx);
+  function pushQuad(v0, v1, v2, v3, mat, group = 'body') {
+    pushTri(v0, v1, v2, mat, group);
+    pushTri(v0, v2, v3, mat, group);
+  }
 
-/**
- * 現在のクリッピング平面の単位法線ベクトル N と接線基底 (U, V) を取得
- */
-function getClippingPlaneBasis() {
+  // Closed Lofted Tube / Revolve with bottom and top caps (Outward CCW winding)
+  // Standard ring convention: vertices ordered CW when viewed from +Y (e.g. +X -> +Z -> -X -> -Z), stacked bottom (-Y) to top (+Y)
+  function addLoft(rings, mat, group = 'body', closedBottom = true, closedTop = true) {
+    const numRings = rings.length;
+    const segs = rings[0].length;
+    for (let r = 0; r < numRings - 1; r++) {
+      const r0 = rings[r];
+      const r1 = rings[r + 1];
+      for (let s = 0; s < segs; s++) {
+        const sn = (s + 1) % segs;
+        pushQuad(r0[s], r0[sn], r1[sn], r1[s], mat, group);
+      }
+    }
+    if (closedBottom) {
+      const r0 = rings[0];
+      let cx = 0, cy = 0, cz = 0;
+      for (let s = 0; s < segs; s++) { cx += r0[s][0]; cy += r0[s][1]; cz += r0[s][2]; }
+      const center = [cx / segs, cy / segs, cz / segs];
+      for (let s = 0; s < segs; s++) {
+        const sn = (s + 1) % segs;
+        pushTri(center, r0[sn], r0[s], mat, group);
+      }
+    }
+    if (closedTop) {
+      const rTop = rings[numRings - 1];
+      let cx = 0, cy = 0, cz = 0;
+      for (let s = 0; s < segs; s++) { cx += rTop[s][0]; cy += rTop[s][1]; cz += rTop[s][2]; }
+      const center = [cx / segs, cy / segs, cz / segs];
+      for (let s = 0; s < segs; s++) {
+        const sn = (s + 1) % segs;
+        pushTri(center, rTop[s], rTop[sn], mat, group);
+      }
+    }
+  }
+
+  // Closed Ellipsoid / Sculpted Sphere
+  function addEllipsoid(cx, cy, cz, rx, ry, rz, segs, stacks, mat, group = 'body', deformFn = null) {
+    const rings = [];
+    for (let j = 1; j < stacks; j++) {
+      const v = j / stacks;
+      const phi = -Math.PI / 2 + v * Math.PI;
+      const cosP = Math.cos(phi);
+      const sinP = Math.sin(phi);
+      const ring = [];
+      for (let i = 0; i < segs; i++) {
+        const u = (i / segs) * Math.PI * 2;
+        let x = Math.cos(u) * cosP * rx;
+        let y = sinP * ry;
+        let z = Math.sin(u) * cosP * rz;
+        if (deformFn) {
+          [x, y, z] = deformFn(x, y, z, u, phi);
+        }
+        ring.push([cx + x, cy + y, cz + z]);
+      }
+      rings.push(ring);
+    }
+    const bottomPole = [cx, cy - ry, cz];
+    const topPole = [cx, cy + ry, cz];
+    if (deformFn) {
+      const bp = deformFn(0, -ry, 0, 0, -Math.PI / 2);
+      const tp = deformFn(0, ry, 0, 0, Math.PI / 2);
+      bottomPole[0] = cx + bp[0]; bottomPole[1] = cy + bp[1]; bottomPole[2] = cz + bp[2];
+      topPole[0] = cx + tp[0]; topPole[1] = cy + tp[1]; topPole[2] = cz + tp[2];
+    }
+
+    const firstRing = rings[0];
+    for (let i = 0; i < segs; i++) {
+      const inext = (i + 1) % segs;
+      pushTri(bottomPole, firstRing[inext], firstRing[i], mat, group);
+    }
+    for (let j = 0; j < rings.length - 1; j++) {
+      const r0 = rings[j];
+      const r1 = rings[j + 1];
+      for (let i = 0; i < segs; i++) {
+        const inext = (i + 1) % segs;
+        pushQuad(r0[i], r0[inext], r1[inext], r1[i], mat, group);
+      }
+    }
+    const lastRing = rings[rings.length - 1];
+    for (let i = 0; i < segs; i++) {
+      const inext = (i + 1) % segs;
+      pushTri(topPole, lastRing[i], lastRing[inext], mat, group);
+    }
+  }
+
+  // Closed Beveled Box
+  function addBevelBox(cx, cy, cz, hx, hy, hz, bevel, mat, group = 'body', rotX = 0, rotY = 0, rotZ = 0) {
+    const b = Math.min(bevel, hx * 0.4, hy * 0.4, hz * 0.4);
+    const levels = [
+      [-hy, hx - b, hz - b],
+      [-hy + b, hx, hz],
+      [hy - b, hx, hz],
+      [hy, hx - b, hz - b]
+    ];
+    const cosX = Math.cos(rotX), sinX = Math.sin(rotX);
+    const cosY = Math.cos(rotY), sinY = Math.sin(rotY);
+    const cosZ = Math.cos(rotZ), sinZ = Math.sin(rotZ);
+
+    function xform(px, py, pz) {
+      let y1 = py * cosX - pz * sinX;
+      let z1 = py * sinX + pz * cosX;
+      let x2 = px * cosY + z1 * sinY;
+      let z2 = -px * sinY + z1 * cosY;
+      let x3 = x2 * cosZ - y1 * sinZ;
+      let y3 = x2 * sinZ + y1 * cosZ;
+      return [cx + x3, cy + y3, cz + z2];
+    }
+
+    const rings = levels.map(([ly, lx, lz]) => [
+      xform( lx, ly,  lz),
+      xform(-lx, ly,  lz),
+      xform(-lx, ly, -lz),
+      xform( lx, ly, -lz)
+    ]);
+    addLoft(rings, mat, group, true, true);
+  }
+
+  // --- Model Builders ---
+
+  // 1. Mario 64 Style Low-Poly Organic Model
+  function buildMarioModel() {
+    baseTriangles.length = 0;
+
+    // TORSO & OVERALLS
+    const torsoSpec = [
+      { y: -0.46, rx: 0.34, rz: 0.28, zOff:  0.00 },
+      { y: -0.34, rx: 0.46, rz: 0.40, zOff:  0.04 },
+      { y: -0.16, rx: 0.50, rz: 0.46, zOff:  0.07 },
+      { y:  0.04, rx: 0.45, rz: 0.40, zOff:  0.04 },
+      { y:  0.06, rx: 0.43, rz: 0.37, zOff:  0.02 },
+      { y:  0.22, rx: 0.40, rz: 0.34, zOff:  0.00 },
+      { y:  0.35, rx: 0.24, rz: 0.22, zOff: -0.01 }
+    ];
+    const torsoSegs = 16;
+    const torsoRings = torsoSpec.map(s => {
+      const ring = [];
+      for (let i = 0; i < torsoSegs; i++) {
+        const a = (i / torsoSegs) * Math.PI * 2;
+        ring.push([Math.cos(a) * s.rx, s.y, Math.sin(a) * s.rz + s.zOff]);
+      }
+      return ring;
+    });
+    addLoft(torsoRings.slice(0, 4), 'blue', 'torso', true, true);
+    addLoft(torsoRings.slice(3, 7), 'red', 'torso', true, true);
+
+    // Overall Front Bib & Straps
+    addBevelBox(0, 0.12, 0.35, 0.22, 0.14, 0.05, 0.02, 'blue', 'torso', -0.18, 0, 0);
+    addBevelBox(-0.18, 0.24, 0.14, 0.055, 0.14, 0.23, 0.015, 'blue', 'torso', 0.15, 0, -0.08);
+    addBevelBox( 0.18, 0.24, 0.14, 0.055, 0.14, 0.23, 0.015, 'blue', 'torso', 0.15, 0,  0.08);
+
+    // Gold Buttons
+    addEllipsoid(-0.15, 0.16, 0.40, 0.048, 0.048, 0.025, 10, 6, 'gold', 'torso');
+    addEllipsoid( 0.15, 0.16, 0.40, 0.048, 0.048, 0.025, 10, 6, 'gold', 'torso');
+
+    // HEAD & FACE
+    addEllipsoid(0, 0.72, 0.02, 0.37, 0.38, 0.38, 18, 12, 'skin', 'head', (x, y, z) => {
+      let nx = x, ny = y, nz = z;
+      if (y < 0 && z > 0) { nx *= 1.06; nz *= 1.07; }
+      if (y < -0.22) { nx *= 0.88; nz *= 0.90; }
+      return [nx, ny, nz];
+    });
+
+    // Nose
+    addEllipsoid(0, 0.67, 0.43, 0.125, 0.105, 0.135, 12, 8, 'skin', 'head');
+
+    // Mustache
+    const stacheLobes = [
+      [-0.21, 0.57, 0.33, 0.075, 0.048, 0.055],
+      [-0.12, 0.56, 0.39, 0.080, 0.052, 0.060],
+      [-0.04, 0.56, 0.42, 0.075, 0.050, 0.060],
+      [ 0.04, 0.56, 0.42, 0.075, 0.050, 0.060],
+      [ 0.12, 0.56, 0.39, 0.080, 0.052, 0.060],
+      [ 0.21, 0.57, 0.33, 0.075, 0.048, 0.055]
+    ];
+    for (const [lx, ly, lz, rx, ry, rz] of stacheLobes) {
+      addEllipsoid(lx, ly, lz, rx, ry, rz, 10, 6, 'hair', 'head');
+    }
+
+    // Eyes, Eyebrows, Ears, Sideburns
+    for (const side of [-1, 1]) {
+      addEllipsoid(side * 0.13, 0.77, 0.34, 0.058, 0.085, 0.035, 10, 8, 'white', 'head');
+      addEllipsoid(side * 0.125, 0.77, 0.365, 0.035, 0.055, 0.025, 10, 6, 'pupil', 'head');
+      addBevelBox(side * 0.14, 0.88, 0.33, 0.075, 0.024, 0.03, 0.008, 'hair', 'head', 0, side * -0.25, side * -0.12);
+      addEllipsoid(side * 0.38, 0.70, -0.02, 0.055, 0.095, 0.075, 10, 8, 'skin', 'head');
+      addBevelBox(side * 0.34, 0.72, 0.12, 0.04, 0.09, 0.055, 0.012, 'hair', 'head');
+    }
+    addEllipsoid(0, 0.68, -0.25, 0.31, 0.24, 0.18, 12, 8, 'hair', 'head');
+
+    // MARIO CAP
+    addEllipsoid(0, 0.94, -0.02, 0.41, 0.24, 0.42, 18, 10, 'red', 'head', (x, y, z) => {
+      let ny = y < 0 ? y * 0.55 : y * 1.12;
+      let nz = y > 0 ? z - 0.03 : z;
+      return [x, ny, nz];
+    });
+
+    // Cap Visor / Brim (Swept -X -> +X; CW around +X is Top-Back -> Top-Front -> Bot-Front -> Bot-Back)
+    const brimSegs = 12;
+    const brimInner = [];
+    const brimOuter = [];
+    for (let i = 0; i <= brimSegs; i++) {
+      const t = (i / brimSegs) * 2 - 1;
+      const ang = t * (Math.PI * 0.46);
+      const sinA = Math.sin(ang);
+      const cosA = Math.cos(ang);
+      brimInner.push([sinA * 0.36, 0.89, cosA * 0.35]);
+      brimOuter.push([sinA * 0.44, 0.875, cosA * 0.58]);
+    }
+    const visorRings = [];
+    for (let i = 0; i <= brimSegs; i++) {
+      const pIn = brimInner[i];
+      const pOut = brimOuter[i];
+      visorRings.push([
+        [pIn[0],  pIn[1] + 0.025, pIn[2]],
+        [pOut[0], pOut[1] + 0.018, pOut[2]],
+        [pOut[0], pOut[1] - 0.012, pOut[2]],
+        [pIn[0],  pIn[1] - 0.015, pIn[2]]
+      ]);
+    }
+    addLoft(visorRings, 'red', 'head', true, true);
+    addEllipsoid(0, 1.01, 0.36, 0.095, 0.085, 0.035, 12, 8, 'white', 'head');
+
+    // ARMS & GLOVES (Bottom-to-Top ring order, vertices CW from top: (-X,+Z) -> (+X,+Z) -> (+X,-Z) -> (-X,-Z))
+    addEllipsoid(-0.46, 0.21, 0.00, 0.14, 0.14, 0.14, 10, 8, 'red', 'leftArm');
+    addLoft([
+      [[-0.52, -0.22, 0.14], [-0.68, -0.22, 0.14], [-0.68, -0.22, -0.02], [-0.52, -0.22, -0.02]],
+      [[-0.48, -0.04, 0.10], [-0.64, -0.04, 0.10], [-0.64, -0.04, -0.06], [-0.48, -0.04, -0.06]],
+      [[-0.38,  0.18, 0.08], [-0.54,  0.18, 0.08], [-0.54,  0.18, -0.08], [-0.38,  0.18, -0.08]]
+    ], 'red', 'leftArm', true, true);
+    addEllipsoid(-0.60, -0.26, 0.07, 0.115, 0.06, 0.115, 10, 6, 'white', 'leftArm');
+    addEllipsoid(-0.61, -0.36, 0.09, 0.13, 0.13, 0.14, 12, 8, 'white', 'leftArm');
+    addEllipsoid(-0.52, -0.34, 0.18, 0.055, 0.055, 0.065, 8, 6, 'white', 'leftArm');
+
+    addEllipsoid(0.46, 0.21, 0.00, 0.14, 0.14, 0.14, 10, 8, 'red', 'rightArm');
+    addLoft([
+      [[0.68, -0.22, 0.14], [0.52, -0.22, 0.14], [0.52, -0.22, -0.02], [0.68, -0.22, -0.02]],
+      [[0.64, -0.04, 0.10], [0.48, -0.04, 0.10], [0.48, -0.04, -0.06], [0.64, -0.04, -0.06]],
+      [[0.54,  0.18, 0.08], [0.38,  0.18, 0.08], [0.38,  0.18, -0.08], [0.54,  0.18, -0.08]]
+    ], 'red', 'rightArm', true, true);
+    addEllipsoid(0.60, -0.26, 0.07, 0.115, 0.06, 0.115, 10, 6, 'white', 'rightArm');
+    addEllipsoid(0.61, -0.36, 0.09, 0.13, 0.13, 0.14, 12, 8, 'white', 'rightArm');
+    addEllipsoid(0.52, -0.34, 0.18, 0.055, 0.055, 0.065, 8, 6, 'white', 'rightArm');
+
+    // LEGS & BOOTS (Bottom-to-Top ring order so addLoft caps & sides face outward)
+    for (const [side, grp] of [[-1, 'leftLeg'], [1, 'rightLeg']]) {
+      const lx = side * 0.22;
+      const legSegs = 12;
+      const legSpec = [
+        { y: -0.82, rx: 0.165, rz: 0.165, z: 0.02 },
+        { y: -0.62, rx: 0.16,  rz: 0.16,  z: 0.02 },
+        { y: -0.40, rx: 0.17,  rz: 0.17,  z: 0.01 }
+      ];
+      const legRings = legSpec.map(s => {
+        const ring = [];
+        for (let i = 0; i < legSegs; i++) {
+          const a = (i / legSegs) * Math.PI * 2;
+          ring.push([lx + Math.cos(a) * s.rx, s.y, Math.sin(a) * s.rz + s.z]);
+        }
+        return ring;
+      });
+      addLoft(legRings, 'blue', grp, true, true);
+
+      addEllipsoid(lx, -0.94, 0.01, 0.175, 0.14, 0.19, 12, 8, 'boots', grp);
+      addEllipsoid(lx, -0.96, 0.16, 0.18, 0.125, 0.20, 12, 8, 'boots', grp);
+      addBevelBox(lx, -1.06, 0.09, 0.185, 0.03, 0.26, 0.01, 'boots', grp);
+    }
+  }
+
+  // 2. Strict Closed Cube (Exact 6 faces / 12 triangles, 100% Watertight)
+  function buildCubeModel() {
+    baseTriangles.length = 0;
+    const s = 0.72;
+    const p000 = [-s, -s, -s];
+    const p100 = [ s, -s, -s];
+    const p110 = [ s,  s, -s];
+    const p010 = [-s,  s, -s];
+    const p001 = [-s, -s,  s];
+    const p101 = [ s, -s,  s];
+    const p111 = [ s,  s,  s];
+    const p011 = [-s,  s,  s];
+
+    pushQuad(p001, p011, p111, p101, 'blue',    'prim'); // Front (+Z)
+    pushQuad(p100, p110, p010, p000, 'cyan',    'prim'); // Back (-Z)
+    pushQuad(p101, p111, p110, p100, 'red',     'prim'); // Right (+X)
+    pushQuad(p000, p010, p011, p001, 'orange',  'prim'); // Left (-X)
+    pushQuad(p011, p010, p110, p111, 'emerald', 'prim'); // Top (+Y)
+    pushQuad(p000, p001, p101, p100, 'purple',  'prim'); // Bottom (-Y)
+  }
+
+  // 3. Strict Closed UV Sphere (100% Watertight)
+  function buildSphereModel() {
+    baseTriangles.length = 0;
+    addEllipsoid(0, 0, 0, 0.85, 0.85, 0.85, 24, 16, 'cyan', 'prim');
+  }
+
+  // 4. Strict Closed Cylinder (100% Watertight with Outward Caps)
+  function buildCylinderModel() {
+    baseTriangles.length = 0;
+    const segs = 24;
+    const r = 0.68;
+    const h = 0.82;
+    const stacks = 6;
+    const rings = [];
+    for (let j = 0; j <= stacks; j++) {
+      const y = -h + (j / stacks) * (2 * h);
+      const ring = [];
+      for (let i = 0; i < segs; i++) {
+        const a = (i / segs) * Math.PI * 2;
+        ring.push([Math.cos(a) * r, y, Math.sin(a) * r]);
+      }
+      rings.push(ring);
+    }
+    addLoft(rings, 'emerald', 'prim', true, true);
+  }
+
+  // 5. Strict Closed Cone (100% Watertight)
+  function buildConeModel() {
+    baseTriangles.length = 0;
+    const segs = 24;
+    const r = 0.78;
+    const yBot = -0.78;
+    const yTop = 0.86;
+    const botRing = [];
+    for (let i = 0; i < segs; i++) {
+      const a = (i / segs) * Math.PI * 2;
+      botRing.push([Math.cos(a) * r, yBot, Math.sin(a) * r]);
+    }
+    const botCenter = [0, yBot, 0];
+    const apex = [0, yTop, 0];
+    for (let i = 0; i < segs; i++) {
+      const inext = (i + 1) % segs;
+      pushTri(botCenter, botRing[inext], botRing[i], 'orange', 'prim');
+      pushTri(apex, botRing[i], botRing[inext], 'red', 'prim');
+    }
+  }
+
+  // 6. Strict Closed Torus lying horizontally in XZ plane (100% Outward CCW Winding)
+  function buildTorusModel() {
+    baseTriangles.length = 0;
+    const majorSegs = 28;
+    const minorSegs = 16;
+    const R = 0.62;
+    const r = 0.28;
+    const rings = [];
+    for (let i = 0; i < majorSegs; i++) {
+      const u = (i / majorSegs) * Math.PI * 2;
+      const cosU = Math.cos(u);
+      const sinU = Math.sin(u);
+      const ring = [];
+      for (let j = 0; j < minorSegs; j++) {
+        const v = -(j / minorSegs) * Math.PI * 2;
+        const cosV = Math.cos(v);
+        const sinV = Math.sin(v);
+        const rad = R + r * cosV;
+        const x = rad * cosU;
+        const y = r * sinV;
+        const z = rad * sinU;
+        ring.push([x, y, z]);
+      }
+      rings.push(ring);
+    }
+    rings.push(rings[0]);
+    addLoft(rings, 'blue', 'prim', false, false);
+  }
+
+  let currentModel = 'mario';
+  function selectModel(name) {
+    currentModel = name;
+    if (name === 'mario') buildMarioModel();
+    else if (name === 'cube') buildCubeModel();
+    else if (name === 'sphere') buildSphereModel();
+    else if (name === 'cylinder') buildCylinderModel();
+    else if (name === 'cone') buildConeModel();
+    else if (name === 'torus') buildTorusModel();
+
+    document.getElementById('hud-model').textContent = name.toUpperCase();
+    const btnPose = document.getElementById('btn-pose');
+    btnPose.disabled = (name !== 'mario');
+  }
+
+  selectModel('mario');
+
+  // --- Camera, Interaction & App State ---
+  let rotY = 0.42;
+  let rotX = -0.35;
+  let camDist = 3.55;
+  let autoRotate = true;
+  let poseMode = 'idle'; // 'idle' | 'jump'
+  let renderMode = 'color'; // 'color' | 'wire' | 'depth' | 'stencil'
+
+  // Clipping Plane State
+  let clipEnabled = true;
+  let clipAxis = 'y'; // 'y' | 'x' | 'z' | 'diag'
+  let clipOffset = 0.15;
+  let clipFlip = false;
+  let capColorIndex = 4; // Default Gold/Yellow (#ffcd75)
+
+  // --- Build Palette Swatches ---
+  const capPaletteEl = document.getElementById('cap-palette');
+  SWEETIE16.forEach(([r, g, b], idx) => {
+    const sw = document.createElement('div');
+    sw.className = 'swatch' + (idx === capColorIndex ? ' selected' : '');
+    sw.style.backgroundColor = `rgb(${r},${g},${b})`;
+    sw.title = `Color #${idx}`;
+    sw.addEventListener('click', () => {
+      capColorIndex = idx;
+      document.querySelectorAll('.swatch').forEach(el => el.classList.remove('selected'));
+      sw.classList.add('selected');
+    });
+    capPaletteEl.appendChild(sw);
+  });
+
+  // --- UI Event Listeners ---
+  document.querySelectorAll('.model-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectModel(btn.dataset.model);
+      document.querySelectorAll('.model-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
+  const btnAutoRot = document.getElementById('btn-autorot');
+  btnAutoRot.addEventListener('click', () => {
+    autoRotate = !autoRotate;
+    btnAutoRot.classList.toggle('active', autoRotate);
+  });
+
+  const btnPose = document.getElementById('btn-pose');
+  btnPose.addEventListener('click', () => {
+    if (currentModel !== 'mario') return;
+    poseMode = poseMode === 'idle' ? 'jump' : 'idle';
+    btnPose.textContent = poseMode === 'idle' ? 'POSE: IDLE' : 'POSE: JUMP!';
+    btnPose.classList.toggle('active', poseMode === 'jump');
+  });
+
+  const modeButtons = {
+    color: document.getElementById('btn-mode-color'),
+    wire: document.getElementById('btn-mode-wire'),
+    depth: document.getElementById('btn-mode-depth'),
+    stencil: document.getElementById('btn-mode-stencil')
+  };
+  Object.entries(modeButtons).forEach(([mode, btn]) => {
+    btn.addEventListener('click', () => {
+      renderMode = mode;
+      Object.values(modeButtons).forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
+  const btnClipToggle = document.getElementById('btn-clip-toggle');
+  btnClipToggle.addEventListener('click', () => {
+    clipEnabled = !clipEnabled;
+    btnClipToggle.textContent = clipEnabled ? 'CLIPPING: ON' : 'CLIPPING: OFF';
+    btnClipToggle.classList.toggle('active', clipEnabled);
+  });
+
+  document.getElementById('btn-clip-flip').addEventListener('click', () => {
+    clipFlip = !clipFlip;
+  });
+
+  document.querySelectorAll('.axis-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      clipAxis = btn.dataset.axis;
+      document.querySelectorAll('.axis-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
+  const clipSlider = document.getElementById('clip-slider');
+  const clipValLabel = document.getElementById('clip-val-label');
+  clipSlider.addEventListener('input', () => {
+    clipOffset = parseFloat(clipSlider.value);
+    clipValLabel.textContent = clipOffset.toFixed(2);
+  });
+
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    rotY = 0.42;
+    rotX = -0.35;
+    camDist = 3.55;
+  });
+
+  // --- Mouse & Touch Drag + Pinch Zoom (with Scroll Prevention) ---
+  let isDragging = false;
+  let lastX = 0, lastY = 0;
+  let pinchStartDist = 0;
+  let pinchStartCamDist = camDist;
+
+  canvas.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    autoRotate = false;
+    btnAutoRot.classList.remove('active');
+    lastX = e.clientX;
+    lastY = e.clientY;
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const dx = e.clientX - lastX;
+    const dy = e.clientY - lastY;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    rotY += dx * 0.012;
+    rotX = Math.max(-1.35, Math.min(1.35, rotX + dy * 0.012));
+  });
+
+  window.addEventListener('mouseup', () => {
+    isDragging = false;
+  });
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    camDist = Math.max(1.9, Math.min(6.5, camDist + e.deltaY * 0.0025));
+  }, { passive: false });
+
+  canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    autoRotate = false;
+    btnAutoRot.classList.remove('active');
+    if (e.touches.length === 1) {
+      isDragging = true;
+      lastX = e.touches[0].clientX;
+      lastY = e.touches[0].clientY;
+    } else if (e.touches.length === 2) {
+      isDragging = false;
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      pinchStartDist = Math.hypot(dx, dy);
+      pinchStartCamDist = camDist;
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if (e.touches.length === 1 && isDragging) {
+      const dx = e.touches[0].clientX - lastX;
+      const dy = e.touches[0].clientY - lastY;
+      lastX = e.touches[0].clientX;
+      lastY = e.touches[0].clientY;
+      rotY += dx * 0.014;
+      rotX = Math.max(-1.35, Math.min(1.35, rotX + dy * 0.014));
+    } else if (e.touches.length === 2 && pinchStartDist > 0) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      const scale = pinchStartDist / Math.max(10, dist);
+      camDist = Math.max(1.9, Math.min(6.5, pinchStartCamDist * scale));
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    if (e.touches.length === 0) {
+      isDragging = false;
+      pinchStartDist = 0;
+    }
+  }, { passive: false });
+
+  // --- 3D Math & Clipping Helpers ---
+  function getClipPlane() {
     let nx = 0, ny = 1, nz = 0;
-    if (clipAxis === 'x') {
-        nx = 1; ny = 0; nz = 0;
-    } else if (clipAxis === 'z') {
-        nx = 0; ny = 0; nz = 1;
-    } else if (clipAxis === 'diag') {
-        // 斜め45度カット平面
-        const inv = 1 / Math.hypot(1, 1, 0.35);
-        nx = 1 * inv; ny = 1 * inv; nz = 0.35 * inv;
+    if (clipAxis === 'x') { nx = 1; ny = 0; nz = 0; }
+    else if (clipAxis === 'z') { nx = 0; ny = 0; nz = 1; }
+    else if (clipAxis === 'diag') {
+      const inv = 1 / Math.sqrt(2);
+      nx = inv; ny = inv; nz = 0;
     }
-
     if (clipFlip) {
-        nx = -nx; ny = -ny; nz = -nz;
+      nx = -nx; ny = -ny; nz = -nz;
     }
+    const d = clipFlip ? -clipOffset : clipOffset;
+    return { nx, ny, nz, d };
+  }
 
-    // 平面上の直交基底 U, V を外積から生成（キャップクワッドとグリッド描画用）
-    let upX = 0, upY = 1, upZ = 0;
-    if (Math.abs(ny) > 0.9) {
-        upX = 0; upY = 0; upZ = 1;
-    }
-    // U = normalize(up x N)
-    let ux = upY * nz - upZ * ny;
-    let uy = upZ * nx - upX * nz;
-    let uz = upX * ny - upY * nx;
-    const uLen = Math.hypot(ux, uy, uz) || 1;
-    ux /= uLen; uy /= uLen; uz /= uLen;
-
-    // V = N x U
-    const vx = ny * uz - nz * uy;
-    const vy = nz * ux - nx * uz;
-    const vz = nx * uy - ny * ux;
-
-    // 平面の中心点 C = N * (clipFlip ? -clipOffset : clipOffset)
-    // ※符号に関わらず「空間上のスライス位置」が直感的に動くよう offset を扱う
-    const signedOffset = clipFlip ? -clipOffset : clipOffset;
-    const cx = nx * signedOffset;
-    const cy = ny * signedOffset;
-    const cz = nz * signedOffset;
-
-    return {
-        nx, ny, nz,
-        offset: signedOffset,
-        cx, cy, cz,
-        ux, uy, uz,
-        vx, vy, vz
-    };
-}
-
-/**
- * ポーズ変形後のローカル頂点座標を取得
- */
-function getPosedVertex(v) {
-    let x = v.x, y = v.y, z = v.z;
-    if (jumpPose) {
-        if (v.part === 'rightArm') {
-            const py = y - 0.82, px = x - 0.55;
-            y = 0.82 - py + 0.15;
-            x = 0.55 + px * 0.9;
-            z += 0.12;
-        } else if (v.part === 'leftArm') {
-            z -= (y - 0.80) * -0.45;
-        } else if (v.part === 'leftLeg') {
-            z += -(y - 0.15) * 0.55;
-            y += 0.16;
-        } else if (v.part === 'rightLeg') {
-            z -= -(y - 0.15) * 0.35;
-        }
-        y += 0.12;
-    }
-    return { x, y, z };
-}
-
-/**
- * ============================================================================
- * 5. Sutherland-Hodgman 3D ポリゴンクリッピング
- * ============================================================================
- * 平面方程式 d(P) = dot(N, P) - offset <= 0 の領域（内側）を残して多角形を切断
- */
-function clipPolygonAgainstPlane(polyVerts, plane) {
+  // Sutherland-Hodgman 3D Polygon Clipping against half-space dot(n, p) <= d
+  function clipPolygonAgainstPlane(poly, plane) {
     const out = [];
-    const count = polyVerts.length;
-    if (count < 3) return out;
+    const len = poly.length;
+    if (len === 0) return out;
+    const { nx, ny, nz, d } = plane;
 
-    for (let i = 0; i < count; i++) {
-        const curr = polyVerts[i];
-        const next = polyVerts[(i + 1) % count];
+    let prev = poly[len - 1];
+    let prevDist = prev[0] * nx + prev[1] * ny + prev[2] * nz - d;
 
-        // 符号付き距離（<= 0 なら保持領域、> 0 ならカット領域）
-        const dCurr = (curr.x * plane.nx + curr.y * plane.ny + curr.z * plane.nz) - plane.offset;
-        const dNext = (next.x * plane.nx + next.y * plane.ny + next.z * plane.nz) - plane.offset;
+    for (let i = 0; i < len; i++) {
+      const curr = poly[i];
+      const currDist = curr[0] * nx + curr[1] * ny + curr[2] * nz - d;
 
-        const currInside = dCurr <= 0;
-        const nextInside = dNext <= 0;
-
-        if (currInside && nextInside) {
-            // 両方内側 -> 終点を追加
-            out.push(next);
-        } else if (currInside && !nextInside) {
-            // 内側 -> 外側へ出る -> 交点を追加
-            const t = dCurr / (dCurr - dNext);
-            out.push({
-                x: curr.x + (next.x - curr.x) * t,
-                y: curr.y + (next.y - curr.y) * t,
-                z: curr.z + (next.z - curr.z) * t
-            });
-        } else if (!currInside && nextInside) {
-            // 外側 -> 内側へ入る -> 交点と終点を追加
-            const t = dCurr / (dCurr - dNext);
-            out.push({
-                x: curr.x + (next.x - curr.x) * t,
-                y: curr.y + (next.y - curr.y) * t,
-                z: curr.z + (next.z - curr.z) * t
-            });
-            out.push(next);
+      if (currDist <= 0) {
+        if (prevDist > 0) {
+          const t = prevDist / (prevDist - currDist);
+          out.push([
+            prev[0] + (curr[0] - prev[0]) * t,
+            prev[1] + (curr[1] - prev[1]) * t,
+            prev[2] + (curr[2] - prev[2]) * t
+          ]);
         }
+        out.push(curr);
+      } else if (prevDist <= 0) {
+        const t = prevDist / (prevDist - currDist);
+        out.push([
+          prev[0] + (curr[0] - prev[0]) * t,
+          prev[1] + (curr[1] - prev[1]) * t,
+          prev[2] + (curr[2] - prev[2]) * t
+        ]);
+      }
+      prev = curr;
+      prevDist = currDist;
     }
     return out;
-}
+  }
 
-/**
- * ============================================================================
- * 6. スキャンラインラスタライザ（ステンシル操作・バウンディングボックスクランプ付）
- * ============================================================================
- */
-function clearBuffers() {
-    const bgTop = PALETTE_U32[0];     // #1a1c2c
-    const bgHorizon = PALETTE_U32[15]; // #333c57
-    const bgFloor = PALETTE_U32[8];    // #29366f
-
-    for (let y = 0; y < HEIGHT; y++) {
-        const rowOffset = y * WIDTH;
-        let col = bgTop;
-        if (y > 142) {
-            col = (y % 8 === 0) ? bgHorizon : bgFloor;
-        } else if (y === 142) {
-            col = PALETTE_U32[14];
-        }
-        pixelBuffer.fill(col, rowOffset, rowOffset + WIDTH);
+  function transformPoseVertex(v, group, timeSec) {
+    let [x, y, z] = v;
+    if (currentModel === 'mario' && poseMode === 'jump') {
+      const bounce = Math.abs(Math.sin(timeSec * 4.5)) * 0.16;
+      if (group === 'rightArm') {
+        const px = x - 0.46, py = y - 0.21;
+        const ang = 2.45;
+        const cosA = Math.cos(ang), sinA = Math.sin(ang);
+        x = 0.46 + px * cosA - py * sinA;
+        y = 0.21 + px * sinA + py * cosA;
+      } else if (group === 'leftLeg') {
+        const py = y + 0.42, pz = z;
+        const ang = -0.45;
+        const cosA = Math.cos(ang), sinA = Math.sin(ang);
+        y = -0.42 + py * cosA - pz * sinA;
+        z = py * sinA + pz * cosA;
+      } else if (group === 'rightLeg') {
+        const py = y + 0.42, pz = z;
+        const ang = 0.45;
+        const cosA = Math.cos(ang), sinA = Math.sin(ang);
+        y = -0.42 + py * cosA - pz * sinA;
+        z = py * sinA + pz * cosA;
+      }
+      y += bounce;
     }
+    return [x, y, z];
+  }
 
-    zBuffer.fill(10000.0);
-    stencilBuffer.fill(0);
-}
+  function worldToScreen(wx, wy, wz, cosY, sinY, cosX, sinX) {
+    const x1 = wx * cosY + wz * sinY;
+    const z1 = -wx * sinY + wz * cosY;
+    const y2 = wy * cosX - z1 * sinX;
+    const z2 = wy * sinX + z1 * cosX;
 
-/**
- * 3D空間点 -> スクリーン投影ヘルパー
- */
-function projectPoint(lx, ly, lz, cosY, sinY, cosX, sinX, fov, halfW, halfH) {
-    // モデルY軸回転
-    const x1 = lx * cosY - lz * sinY;
-    const z1 = lx * sinY + lz * cosY;
-    // モデルX軸回転
-    const y2 = ly * cosX - z1 * sinX;
-    const z2 = ly * sinX + z1 * cosX;
+    const vz = z2 + camDist;
+    if (vz <= 0.15) return null;
 
-    const camZ = camDist - z2;
-    const invZ = fov / Math.max(0.15, camZ);
+    const fov = 210;
+    const invZ = 1 / vz;
+    const sx = W * 0.5 + x1 * fov * invZ;
+    const sy = H * 0.52 - y2 * fov * invZ;
+    return { x: sx, y: sy, z: vz, invZ };
+  }
 
-    return {
-        lx, ly, lz,
-        vx: x1, vy: y2, vz: z2,
-        z: camZ,
-        sx: halfW + x1 * invZ,
-        sy: halfH - y2 * invZ
-    };
-}
+  // --- Software Rasterizer Passes (Spike-Free Bounding-Clamped Scanline) ---
 
-/**
- * Pass 1 用ラスタライザ：ジオメトリ描画 + Zテスト + ステンシル表裏インクリメント/デクリメント
- * @param {boolean} isFrontFace - trueなら表面(stencil + 1)、falseなら裏面(stencil - 1)
- */
-function rasterizeGeometryTriangle(v0, v1, v2, ramp, shadeLevel, isFrontFace) {
-    const triMinX = Math.min(v0.sx, v1.sx, v2.sx);
-    const triMaxX = Math.max(v0.sx, v1.sx, v2.sx);
-    if (triMaxX < 0 || triMinX >= WIDTH) return;
+  // PASS 1: Stencil-Only Count Pass (No Color, No Z-Test/Write -> Pure Manifold Winding Count)
+  function rasterizeStencilOnlyPass(p0, p1, p2, isFront) {
+    const triMinX = Math.max(0, Math.floor(Math.min(p0.x, p1.x, p2.x)));
+    const triMaxX = Math.min(W - 1, Math.ceil(Math.max(p0.x, p1.x, p2.x)));
+    if (triMinX > triMaxX) return;
 
-    // Yソート
-    if (v0.sy > v1.sy) { const t = v0; v0 = v1; v1 = t; }
-    if (v0.sy > v2.sy) { const t = v0; v0 = v2; v2 = t; }
-    if (v1.sy > v2.sy) { const t = v1; v1 = v2; v2 = t; }
+    let v0 = p0, v1 = p1, v2 = p2;
+    if (v1.y < v0.y) { const t = v0; v0 = v1; v1 = t; }
+    if (v2.y < v0.y) { const t = v0; v0 = v2; v2 = t; }
+    if (v2.y < v1.y) { const t = v1; v1 = v2; v2 = t; }
 
-    const yStart = Math.max(0, Math.ceil(v0.sy - 0.5));
-    const yEnd   = Math.min(HEIGHT - 1, Math.ceil(v2.sy - 0.5) - 1);
-    if (yStart > yEnd) return;
+    const totalH = v2.y - v0.y;
+    if (totalH < 1e-4) return;
 
-    const totalHeight = v2.sy - v0.sy;
-    if (totalHeight <= 1e-5) return;
-    const invTotalHeight = 1.0 / totalHeight;
+    const yStart = Math.max(0, Math.ceil(v0.y - 0.5));
+    const yEnd = Math.min(H - 1, Math.floor(v2.y - 0.5));
+    const deltaStencil = isFront ? 1 : -1;
 
-    const topHeight = v1.sy - v0.sy;
-    const botHeight = v2.sy - v1.sy;
-    const invTopHeight = topHeight > 1e-5 ? 1.0 / topHeight : 0.0;
-    const invBotHeight = botHeight > 1e-5 ? 1.0 / botHeight : 0.0;
+    for (let y = yStart; y <= yEnd; y++) {
+      const sy = y + 0.5;
+      const secondHalf = sy >= v1.y;
+      const segH = secondHalf ? (v2.y - v1.y) : (v1.y - v0.y);
+      if (segH < 1e-5) continue;
 
-    // シェーディング色計算
+      const alpha = Math.max(0, Math.min(1, (sy - v0.y) / totalH));
+      const beta = secondHalf
+        ? Math.max(0, Math.min(1, (sy - v1.y) / segH))
+        : Math.max(0, Math.min(1, (sy - v0.y) / segH));
+
+      let ax = v0.x + (v2.x - v0.x) * alpha;
+      let bx = secondHalf
+        ? v1.x + (v2.x - v1.x) * beta
+        : v0.x + (v1.x - v0.x) * beta;
+
+      ax = Math.max(triMinX, Math.min(triMaxX, ax));
+      bx = Math.max(triMinX, Math.min(triMaxX, bx));
+      if (ax > bx) { const t = ax; ax = bx; bx = t; }
+
+      const xStart = Math.max(triMinX, Math.ceil(ax - 0.5));
+      const xEnd = Math.min(triMaxX, Math.floor(bx - 0.5));
+      const rowOffset = y * W;
+
+      for (let x = xStart; x <= xEnd; x++) {
+        stencilBuffer[rowOffset + x] = (stencilBuffer[rowOffset + x] + deltaStencil) & 0xff;
+      }
+    }
+  }
+
+  // PASS 2: Front-Face Color + Z-Buffer Pass (Backfaces Culled)
+  function rasterizeFrontColorPass(p0, p1, p2, ramp, shadeLevel) {
+    const triMinX = Math.max(0, Math.floor(Math.min(p0.x, p1.x, p2.x)));
+    const triMaxX = Math.min(W - 1, Math.ceil(Math.max(p0.x, p1.x, p2.x)));
+    if (triMinX > triMaxX) return;
+
+    let v0 = p0, v1 = p1, v2 = p2;
+    if (v1.y < v0.y) { const t = v0; v0 = v1; v1 = t; }
+    if (v2.y < v0.y) { const t = v0; v0 = v2; v2 = t; }
+    if (v2.y < v1.y) { const t = v1; v1 = v2; v2 = t; }
+
+    const totalH = v2.y - v0.y;
+    if (totalH < 1e-4) return;
+
+    const yStart = Math.max(0, Math.ceil(v0.y - 0.5));
+    const yEnd = Math.min(H - 1, Math.floor(v2.y - 0.5));
+
     const clampedShade = Math.max(0, Math.min(2.999, shadeLevel));
     const baseIdx = Math.floor(clampedShade);
     const frac = clampedShade - baseIdx;
-    const cLow  = PALETTE_U32[ramp[baseIdx]];
-    const cHigh = PALETTE_U32[ramp[baseIdx + 1]];
-    const ditherThreshold = frac * 16.0;
-
-    // ステンシル増減値（Uint8Array は自動的に mod 256 でラップする）
-    const stencilDelta = isFrontFace ? 1 : 255; // +1 または -1 (mod 256)
+    const cLow = PAL32[ramp[baseIdx]];
+    const cHigh = PAL32[ramp[baseIdx + 1]];
 
     for (let y = yStart; y <= yEnd; y++) {
-        const py = y + 0.5;
-        const isSecondHalf = py >= v1.sy || topHeight <= 1e-5;
-        if (isSecondHalf) {
-            if (botHeight <= 1e-5) continue;
-        } else {
-            if (topHeight <= 1e-5) continue;
+      const sy = y + 0.5;
+      const secondHalf = sy >= v1.y;
+      const segH = secondHalf ? (v2.y - v1.y) : (v1.y - v0.y);
+      if (segH < 1e-5) continue;
+
+      const alpha = Math.max(0, Math.min(1, (sy - v0.y) / totalH));
+      const beta = secondHalf
+        ? Math.max(0, Math.min(1, (sy - v1.y) / segH))
+        : Math.max(0, Math.min(1, (sy - v0.y) / segH));
+
+      let ax = v0.x + (v2.x - v0.x) * alpha;
+      let aiz = v0.invZ + (v2.invZ - v0.invZ) * alpha;
+      let bx = secondHalf ? v1.x + (v2.x - v1.x) * beta : v0.x + (v1.x - v0.x) * beta;
+      let biz = secondHalf ? v1.invZ + (v2.invZ - v1.invZ) * beta : v0.invZ + (v1.invZ - v0.invZ) * beta;
+
+      ax = Math.max(triMinX, Math.min(triMaxX, ax));
+      bx = Math.max(triMinX, Math.min(triMaxX, bx));
+
+      if (ax > bx) {
+        let t = ax; ax = bx; bx = t;
+        t = aiz; aiz = biz; biz = t;
+      }
+
+      const spanX = bx - ax;
+      const diz = spanX > 1e-5 ? (biz - aiz) / spanX : 0;
+      const xStart = Math.max(triMinX, Math.ceil(ax - 0.5));
+      const xEnd = Math.min(triMaxX, Math.floor(bx - 0.5));
+      let iz = aiz + (xStart + 0.5 - ax) * diz;
+
+      const rowOffset = y * W;
+      const bayerRow = (y & 3) << 2;
+
+      for (let x = xStart; x <= xEnd; x++) {
+        const idx = rowOffset + x;
+        const z = 1 / iz;
+        if (z < zBuffer[idx]) {
+          zBuffer[idx] = z;
+          if (renderMode === 'depth') {
+            const dRamp = [12, 11, 10, 9, 8, 1, 15, 0];
+            const zNear = Math.max(0.5, camDist - 1.15);
+            const zSpan = 2.3;
+            const dScaled = Math.max(0, Math.min(6.999, ((z - zNear) / zSpan) * 7.0));
+            const dBase = Math.floor(dScaled);
+            const dFrac = dScaled - dBase;
+            const threshold = (BAYER4[bayerRow + (x & 3)] + 0.5) / 16;
+            pixelBuf[idx] = PAL32[dFrac > threshold ? dRamp[dBase + 1] : dRamp[dBase]];
+          } else {
+            const threshold = (BAYER4[bayerRow + (x & 3)] + 0.5) / 16;
+            pixelBuf[idx] = frac > threshold ? cHigh : cLow;
+          }
         }
-
-        const alpha = Math.max(0.0, Math.min(1.0, (py - v0.sy) * invTotalHeight));
-        const beta  = isSecondHalf
-            ? Math.max(0.0, Math.min(1.0, (py - v1.sy) * invBotHeight))
-            : Math.max(0.0, Math.min(1.0, (py - v0.sy) * invTopHeight));
-
-        let ax = v0.sx + (v2.sx - v0.sx) * alpha;
-        let az = v0.z  + (v2.z  - v0.z)  * alpha;
-
-        let bx = isSecondHalf
-            ? v1.sx + (v2.sx - v1.sx) * beta
-            : v0.sx + (v1.sx - v0.sx) * beta;
-        let bz = isSecondHalf
-            ? v1.z  + (v2.z  - v1.z)  * beta
-            : v0.z  + (v1.z  - v0.z)  * beta;
-
-        // スパイク防止バウンディングボックスクランプ
-        ax = Math.max(triMinX, Math.min(triMaxX, ax));
-        bx = Math.max(triMinX, Math.min(triMaxX, bx));
-
-        if (ax > bx) {
-            let tmp = ax; ax = bx; bx = tmp;
-            tmp = az; az = bz; bz = tmp;
-        }
-
-        const xStart = Math.max(0, Math.ceil(ax - 0.5));
-        const xEnd   = Math.min(WIDTH - 1, Math.ceil(bx - 0.5) - 1);
-        if (xStart > xEnd) continue;
-
-        const spanW = bx - ax;
-        const invSpanW = spanW > 1e-5 ? 1.0 / spanW : 0.0;
-        const rowOffset = y * WIDTH;
-        const bayerRow = (y & 3) << 2;
-
-        for (let x = xStart; x <= xEnd; x++) {
-            const t = spanW > 1e-5 ? Math.max(0.0, Math.min(1.0, ((x + 0.5) - ax) * invSpanW)) : 0.0;
-            const z = az + (bz - az) * t;
-            const idx = rowOffset + x;
-
-            // 深度テスト通過時にカラー・Z・ステンシルを更新
-            if (z < zBuffer[idx]) {
-                zBuffer[idx] = z;
-
-                // ★ Three.js webgl_clipping_stencil 方式のステンシルカウント ★
-                // 表面が描画されたら +1、裏面（空洞の内側）が描画されたら -1。
-                // カット面で開口している箇所のみ surface - backface != 0 が残る！
-                if (clipEnabled) {
-                    stencilBuffer[idx] = (stencilBuffer[idx] + stencilDelta) & 0xFF;
-                }
-
-                if (useDither) {
-                    const threshold = BAYER_4X4[bayerRow + (x & 3)];
-                    pixelBuffer[idx] = (ditherThreshold > threshold) ? cHigh : cLow;
-                } else {
-                    pixelBuffer[idx] = (frac >= 0.5) ? cHigh : cLow;
-                }
-            }
-        }
+        iz += diz;
+      }
     }
-}
+  }
 
-/**
- * Pass 2 用ラスタライザ：ステンシルキャップ（切断面）の塗りつぶし
- * stencilBuffer[idx] !== 0 のピクセルのみを選択された断面カラーで塗りつぶす
- */
-function rasterizeStencilCapTriangle(v0, v1, v2) {
-    const triMinX = Math.min(v0.sx, v1.sx, v2.sx);
-    const triMaxX = Math.max(v0.sx, v1.sx, v2.sx);
-    if (triMaxX < 0 || triMinX >= WIDTH) return;
+  // PASS 3: Stencil Cap Pass (Front-Face Only Cap Quad with Z-Test & Write)
+  function rasterizeStencilCapPass(p0, p1, p2, capCol32, capEdgeCol32) {
+    const triMinX = Math.max(0, Math.floor(Math.min(p0.x, p1.x, p2.x)));
+    const triMaxX = Math.min(W - 1, Math.ceil(Math.max(p0.x, p1.x, p2.x)));
+    if (triMinX > triMaxX) return;
 
-    if (v0.sy > v1.sy) { const t = v0; v0 = v1; v1 = t; }
-    if (v0.sy > v2.sy) { const t = v0; v0 = v2; v2 = t; }
-    if (v1.sy > v2.sy) { const t = v1; v1 = v2; v2 = t; }
+    let v0 = p0, v1 = p1, v2 = p2;
+    if (v1.y < v0.y) { const t = v0; v0 = v1; v1 = t; }
+    if (v2.y < v0.y) { const t = v0; v0 = v2; v2 = t; }
+    if (v2.y < v1.y) { const t = v1; v1 = v2; v2 = t; }
 
-    const yStart = Math.max(0, Math.ceil(v0.sy - 0.5));
-    const yEnd   = Math.min(HEIGHT - 1, Math.ceil(v2.sy - 0.5) - 1);
-    if (yStart > yEnd) return;
+    const totalH = v2.y - v0.y;
+    if (totalH < 1e-4) return;
 
-    const totalHeight = v2.sy - v0.sy;
-    if (totalHeight <= 1e-5) return;
-    const invTotalHeight = 1.0 / totalHeight;
-
-    const topHeight = v1.sy - v0.sy;
-    const botHeight = v2.sy - v1.sy;
-    const invTopHeight = topHeight > 1e-5 ? 1.0 / topHeight : 0.0;
-    const invBotHeight = botHeight > 1e-5 ? 1.0 / botHeight : 0.0;
-
-    const capMainU32 = PALETTE_U32[capColorIdx];
-    // 方眼グリッド線用の少し暗めまたは明るめのコントラスト色
-    const gridAltIdx = (capColorIdx === 0 || capColorIdx === 1 || capColorIdx === 8) ? 14 : 0;
-    const capGridU32 = PALETTE_U32[gridAltIdx];
+    const yStart = Math.max(0, Math.ceil(v0.y - 0.5));
+    const yEnd = Math.min(H - 1, Math.floor(v2.y - 0.5));
 
     for (let y = yStart; y <= yEnd; y++) {
-        const py = y + 0.5;
-        const isSecondHalf = py >= v1.sy || topHeight <= 1e-5;
-        if (isSecondHalf) {
-            if (botHeight <= 1e-5) continue;
-        } else {
-            if (topHeight <= 1e-5) continue;
-        }
+      const sy = y + 0.5;
+      const secondHalf = sy >= v1.y;
+      const segH = secondHalf ? (v2.y - v1.y) : (v1.y - v0.y);
+      if (segH < 1e-5) continue;
 
-        const alpha = Math.max(0.0, Math.min(1.0, (py - v0.sy) * invTotalHeight));
-        const beta  = isSecondHalf
-            ? Math.max(0.0, Math.min(1.0, (py - v1.sy) * invBotHeight))
-            : Math.max(0.0, Math.min(1.0, (py - v0.sy) * invTopHeight));
+      const alpha = Math.max(0, Math.min(1, (sy - v0.y) / totalH));
+      const beta = secondHalf
+        ? Math.max(0, Math.min(1, (sy - v1.y) / segH))
+        : Math.max(0, Math.min(1, (sy - v0.y) / segH));
 
-        let ax = v0.sx + (v2.sx - v0.sx) * alpha;
-        let az = v0.z  + (v2.z  - v0.z)  * alpha;
-        let au = v0.u  + (v2.u  - v0.u)  * alpha;
-        let av = v0.v  + (v2.v  - v0.v)  * alpha;
+      let ax = v0.x + (v2.x - v0.x) * alpha;
+      let aiz = v0.invZ + (v2.invZ - v0.invZ) * alpha;
+      let bx = secondHalf ? v1.x + (v2.x - v1.x) * beta : v0.x + (v1.x - v0.x) * beta;
+      let biz = secondHalf ? v1.invZ + (v2.invZ - v1.invZ) * beta : v0.invZ + (v1.invZ - v0.invZ) * beta;
 
-        let bx = isSecondHalf
-            ? v1.sx + (v2.sx - v1.sx) * beta
-            : v0.sx + (v1.sx - v0.sx) * beta;
-        let bz = isSecondHalf
-            ? v1.z  + (v2.z  - v1.z)  * beta
-            : v0.z  + (v1.z  - v0.z)  * beta;
-        let bu = isSecondHalf
-            ? v1.u  + (v2.u  - v1.u)  * beta
-            : v0.u  + (v1.u  - v0.u)  * beta;
-        let bv = isSecondHalf
-            ? v1.v  + (v2.v  - v1.v)  * beta
-            : v0.v  + (v1.v  - v0.v)  * beta;
+      ax = Math.max(triMinX, Math.min(triMaxX, ax));
+      bx = Math.max(triMinX, Math.min(triMaxX, bx));
 
-        ax = Math.max(triMinX, Math.min(triMaxX, ax));
-        bx = Math.max(triMinX, Math.min(triMaxX, bx));
+      if (ax > bx) {
+        let t = ax; ax = bx; bx = t;
+        t = aiz; aiz = biz; biz = t;
+      }
 
-        if (ax > bx) {
-            let tmp = ax; ax = bx; bx = tmp;
-            tmp = az; az = bz; bz = tmp;
-            tmp = au; au = bu; bu = tmp;
-            tmp = av; av = bv; bv = tmp;
-        }
+      const spanX = bx - ax;
+      const diz = spanX > 1e-5 ? (biz - aiz) / spanX : 0;
+      const xStart = Math.max(triMinX, Math.ceil(ax - 0.5));
+      const xEnd = Math.min(triMaxX, Math.floor(bx - 0.5));
+      let iz = aiz + (xStart + 0.5 - ax) * diz;
 
-        const xStart = Math.max(0, Math.ceil(ax - 0.5));
-        const xEnd   = Math.min(WIDTH - 1, Math.ceil(bx - 0.5) - 1);
-        if (xStart > xEnd) continue;
+      const rowOffset = y * W;
+      const bayerRow = (y & 3) << 2;
 
-        const spanW = bx - ax;
-        const invSpanW = spanW > 1e-5 ? 1.0 / spanW : 0.0;
-        const rowOffset = y * WIDTH;
-
-        for (let x = xStart; x <= xEnd; x++) {
-            const idx = rowOffset + x;
-
-            // ★ STENCIL TEST: stencilBuffer[idx] !== 0 の領域（切断された内部断面）だけを描画 ★
-            if (stencilBuffer[idx] !== 0) {
-                const t = spanW > 1e-5 ? Math.max(0.0, Math.min(1.0, ((x + 0.5) - ax) * invSpanW)) : 0.0;
-                const z = az + (bz - az) * t - 0.002; // Zファイティング防止の微小バイアス
-
-                // 切断面の手前に他のパーツ（腕や鼻など）がある場合はZテストで正しく遮蔽される
-                if (z <= zBuffer[idx] + 0.02) {
-                    zBuffer[idx] = Math.min(zBuffer[idx], z);
-
-                    if (capPatternGrid) {
-                        const uCoord = au + (bu - au) * t;
-                        const vCoord = av + (bv - av) * t;
-                        // 断面上のCAD風方眼ドット/グリッドパターン
-                        const gu = Math.abs((uCoord * 6.0) - Math.round(uCoord * 6.0));
-                        const gv = Math.abs((vCoord * 6.0) - Math.round(vCoord * 6.0));
-                        const isGridLine = (gu < 0.06 || gv < 0.06) && ((x + y) & 1 === 0);
-                        pixelBuffer[idx] = isGridLine ? capGridU32 : capMainU32;
-                    } else {
-                        pixelBuffer[idx] = capMainU32;
-                    }
-                }
+      for (let x = xStart; x <= xEnd; x++) {
+        const idx = rowOffset + x;
+        if (stencilBuffer[idx] !== 0) {
+          const z = 1 / iz;
+          if (z <= zBuffer[idx] + 1e-4) {
+            zBuffer[idx] = z;
+            if (renderMode === 'depth') {
+              const dRamp = [12, 11, 10, 9, 8, 1, 15, 0];
+              const zNear = Math.max(0.5, camDist - 1.15);
+              const zSpan = 2.3;
+              const dScaled = Math.max(0, Math.min(6.999, ((z - zNear) / zSpan) * 7.0));
+              const dBase = Math.floor(dScaled);
+              const dFrac = dScaled - dBase;
+              const threshold = (BAYER4[bayerRow + (x & 3)] + 0.5) / 16;
+              pixelBuf[idx] = PAL32[dFrac > threshold ? dRamp[dBase + 1] : dRamp[dBase]];
+            } else {
+              const hatch = BAYER4[bayerRow + (x & 3)] < 2;
+              pixelBuf[idx] = hatch ? capEdgeCol32 : capCol32;
             }
+          }
         }
+        iz += diz;
+      }
     }
-}
+  }
 
-/**
- * Zバッファ対応 2Dライン描画（クリッピング平面の枠線ガイド表示用）
- */
-function drawLine3D(p0, p1, colorU32, dashed = false) {
-    let ix0 = Math.round(p0.sx), iy0 = Math.round(p0.sy);
-    let ix1 = Math.round(p1.sx), iy1 = Math.round(p1.sy);
-
+  function drawLine2D(x0, y0, x1, y1, col32) {
+    let ix0 = Math.round(x0), iy0 = Math.round(y0);
+    let ix1 = Math.round(x1), iy1 = Math.round(y1);
     const dx = Math.abs(ix1 - ix0);
     const dy = Math.abs(iy1 - iy0);
     const sx = ix0 < ix1 ? 1 : -1;
     const sy = iy0 < iy1 ? 1 : -1;
     let err = dx - dy;
 
-    const steps = Math.max(dx, dy, 1);
-    let step = 0;
-
     while (true) {
-        if (!dashed || ((step >> 1) & 1) === 0) {
-            if (ix0 >= 0 && ix0 < WIDTH && iy0 >= 0 && iy0 < HEIGHT) {
-                const t = step / steps;
-                const z = p0.z + (p1.z - p0.z) * t - 0.01;
-                const idx = iy0 * WIDTH + ix0;
-                if (z <= zBuffer[idx]) {
-                    pixelBuffer[idx] = colorU32;
-                }
-            }
-        }
-        if (ix0 === ix1 && iy0 === iy1) break;
-        const e2 = 2 * err;
-        if (e2 > -dy) { err -= dy; ix0 += sx; }
-        if (e2 < dx)  { err += dx; iy0 += sy; }
-        step++;
+      if (ix0 >= 0 && ix0 < W && iy0 >= 0 && iy0 < H) {
+        pixelBuf[iy0 * W + ix0] = col32;
+      }
+      if (ix0 === ix1 && iy0 === iy1) break;
+      const e2 = 2 * err;
+      if (e2 > -dy) { err -= dy; ix0 += sx; }
+      if (e2 < dx) { err += dx; iy0 += sy; }
     }
-}
+  }
 
-/**
- * ============================================================================
- * 7. メイン 3D レンダリングパイプライン (Pass 1 + Pass 2 + Debug Views)
- * ============================================================================
- */
-function renderScene() {
-    clearBuffers();
+  // --- Main Render Loop ---
+  const hudStats = document.getElementById('hud-stats');
+  let lastTime = performance.now();
+  let frameCount = 0;
+  let fps = 60;
+
+  const lightDir = (() => {
+    const lx = 0.45, ly = 0.75, lz = 0.55;
+    const len = Math.hypot(lx, ly, lz);
+    return [lx / len, ly / len, lz / len];
+  })();
+
+  function render(now) {
+    requestAnimationFrame(render);
+
+    frameCount++;
+    if (now - lastTime >= 500) {
+      fps = Math.round((frameCount * 1000) / (now - lastTime));
+      frameCount = 0;
+      lastTime = now;
+    }
+
+    const timeSec = now * 0.001;
+    if (autoRotate) {
+      rotY += 0.016;
+    }
+
+    pixelBuf.fill(PAL32[0]);
+    zBuffer.fill(1e9);
+    stencilBuffer.fill(0);
+
+    for (let x = 0; x < W; x += 16) {
+      pixelBuf[172 * W + x] = PAL32[15];
+      pixelBuf[184 * W + x] = PAL32[15];
+    }
 
     const cosY = Math.cos(rotY), sinY = Math.sin(rotY);
     const cosX = Math.cos(rotX), sinX = Math.sin(rotX);
+    const plane = getClipPlane();
 
-    // 平行光源
-    const lx = 0.45, ly = 0.72, lz = 0.52;
-    const lLen = Math.hypot(lx, ly, lz);
-    const lightDir = { x: lx / lLen, y: ly / lLen, z: lz / lLen };
+    const renderList = [];
+    for (let i = 0; i < baseTriangles.length; i++) {
+      const tri = baseTriangles[i];
+      const w0 = transformPoseVertex(tri.v[0], tri.group, timeSec);
+      const w1 = transformPoseVertex(tri.v[1], tri.group, timeSec);
+      const w2 = transformPoseVertex(tri.v[2], tri.group, timeSec);
 
-    const fov = 225.0;
-    const halfW = WIDTH * 0.5;
-    const halfH = HEIGHT * 0.5 + 15;
+      const clippedVerts = clipEnabled
+        ? clipPolygonAgainstPlane([w0, w1, w2], plane)
+        : [w0, w1, w2];
 
-    // ポーズ適用済み頂点リストを作成
-    const posedVerts = new Array(baseVertices.length);
-    for (let i = 0; i < baseVertices.length; i++) {
-        posedVerts[i] = getPosedVertex(baseVertices[i]);
-    }
+      if (clippedVerts.length < 3) continue;
 
-    const plane = getClippingPlaneBasis();
+      for (let k = 1; k < clippedVerts.length - 1; k++) {
+        const cv0 = clippedVerts[0];
+        const cv1 = clippedVerts[k];
+        const cv2 = clippedVerts[k + 1];
 
-    // ------------------------------------------------------------------------
-    // PASS 1: クリッピング付きジオメトリ描画 & ステンシルバッファ表裏カウント
-    // ------------------------------------------------------------------------
-    for (let i = 0; i < triangles.length; i++) {
-        const tri = triangles[i];
-        const v0 = posedVerts[tri.i0];
-        const v1 = posedVerts[tri.i1];
-        const v2 = posedVerts[tri.i2];
+        const ux = cv1[0] - cv0[0], uy = cv1[1] - cv0[1], uz = cv1[2] - cv0[2];
+        const vx = cv2[0] - cv0[0], vy = cv2[1] - cv0[1], vz = cv2[2] - cv0[2];
+        let nx = uy * vz - uz * vy;
+        let ny = uz * vx - ux * vz;
+        let nz = ux * vy - uy * vx;
+        const nLen = Math.hypot(nx, ny, nz);
+        if (nLen < 1e-6) continue;
+        nx /= nLen; ny /= nLen; nz /= nLen;
 
-        // クリッピングが有効なら 3D空間上で三角形を平面切断（最大4〜5頂点の多角形になる）
-        let poly = [v0, v1, v2];
-        if (clipEnabled) {
-            poly = clipPolygonAgainstPlane(poly, plane);
-            if (poly.length < 3) continue; // 完全にカットされた三角形はスキップ
-        }
+        const p0 = worldToScreen(cv0[0], cv0[1], cv0[2], cosY, sinY, cosX, sinX);
+        const p1 = worldToScreen(cv1[0], cv1[1], cv1[2], cosY, sinY, cosX, sinX);
+        const p2 = worldToScreen(cv2[0], cv2[1], cv2[2], cosY, sinY, cosX, sinX);
+        if (!p0 || !p1 || !p2) continue;
 
-        // 切断後の多角形を三角形ファン (poly[0], poly[k], poly[k+1]) に分割して投影・描画
-        const projPoly = new Array(poly.length);
-        for (let k = 0; k < poly.length; k++) {
-            projPoly[k] = projectPoint(poly[k].x, poly[k].y, poly[k].z, cosY, sinY, cosX, sinX, fov, halfW, halfH);
-        }
+        const area2 = (p1.x - p0.x) * (p2.y - p0.y) - (p2.x - p0.x) * (p1.y - p0.y);
+        if (Math.abs(area2) < 0.05) continue;
+        const isFront = area2 < 0;
 
-        for (let k = 1; k < projPoly.length - 1; k++) {
-            const p0 = projPoly[0];
-            const p1 = projPoly[k];
-            const p2 = projPoly[k + 1];
+        const ndotl = nx * lightDir[0] + ny * lightDir[1] + nz * lightDir[2];
+        const shadeLevel = (ndotl * 0.5 + 0.5) * 2.95;
 
-            // 2Dスクリーン外積による表裏判定（CCWが表面: cross2D < 0, CWが裏面: cross2D > 0）
-            const cross2D = (p1.sx - p0.sx) * (p2.sy - p0.sy) - (p1.sy - p0.sy) * (p2.sx - p0.sx);
-            if (Math.abs(cross2D) < 1e-4) continue;
-
-            const isFrontFace = cross2D < 0;
-
-            // クリッピング無効時は通常の背面カリングで裏面をスキップ（高速化）
-            if (!clipEnabled && !isFrontFace) continue;
-
-            if (isFrontFace) {
-                // 表面のライティング計算
-                const ux = p1.vx - p0.vx, uy = p1.vy - p0.vy, uz = p1.vz - p0.vz;
-                const vx = p2.vx - p0.vx, vy = p2.vy - p0.vy, vz = p2.vz - p0.vz;
-                let nx = uy * vz - uz * vy;
-                let ny = uz * vx - ux * vz;
-                let nz = ux * vy - uy * vx;
-                const nLen = Math.hypot(nx, ny, nz);
-                if (nLen > 1e-5) { nx /= nLen; ny /= nLen; nz /= nLen; }
-
-                const ndotl = Math.max(0, nx * lightDir.x + ny * lightDir.y + nz * lightDir.z);
-                const shadeLevel = 0.45 + ndotl * 2.55;
-
-                rasterizeGeometryTriangle(p0, p1, p2, tri.mat.ramp, shadeLevel, true);
-            } else {
-                // 裏面（モデルの内部側）：ステンシルをデクリメント (-1) し、暗い影色で描画
-                const innerIdx = tri.mat.inner;
-                rasterizeGeometryTriangle(p0, p1, p2, [innerIdx, innerIdx, innerIdx, innerIdx], 0.0, false);
-            }
-        }
-    }
-
-    // ------------------------------------------------------------------------
-    // PASS 2: ステンシルバッファによる切断面（キャップポリゴン）の塗りつぶし
-    // ------------------------------------------------------------------------
-    if (clipEnabled) {
-        // 平面上にモデル全体を十分覆う大きなクワッド（半径 R = 2.4）を配置
-        const R = 2.4;
-        const cornersLocal = [
-            { u: -R, v: -R },
-            { u:  R, v: -R },
-            { u:  R, v:  R },
-            { u: -R, v:  R }
-        ];
-
-        const capVerts = cornersLocal.map(c => {
-            const lx = plane.cx + plane.ux * c.u + plane.vx * c.v;
-            const ly = plane.cy + plane.uy * c.u + plane.vy * c.v;
-            const lz = plane.cz + plane.uz * c.u + plane.vz * c.v;
-            const proj = projectPoint(lx, ly, lz, cosY, sinY, cosX, sinX, fov, halfW, halfH);
-            proj.u = c.u;
-            proj.v = c.v;
-            return proj;
+        renderList.push({
+          p0, p1, p2,
+          isFront,
+          ramp: MATERIALS[tri.mat],
+          shadeLevel
         });
-
-        // クワッドを構成する2枚の三角形をステンシルテスト付きで描画
-        // （正面・背面どちらから見てもキャップされるよう両面ラスタライズ）
-        rasterizeStencilCapTriangle(capVerts[0], capVerts[1], capVerts[2]);
-        rasterizeStencilCapTriangle(capVerts[0], capVerts[2], capVerts[3]);
-
-        // クリッピング平面の枠線フレーム表示（補助ビジュアル）
-        if (showPlaneGrid) {
-            const frameR = 1.45;
-            const fCorners = [
-                { u: -frameR, v: -frameR },
-                { u:  frameR, v: -frameR },
-                { u:  frameR, v:  frameR },
-                { u: -frameR, v:  frameR }
-            ].map(c => {
-                const lx = plane.cx + plane.ux * c.u + plane.vx * c.v;
-                const ly = plane.cy + plane.uy * c.u + plane.vy * c.v;
-                const lz = plane.cz + plane.uz * c.u + plane.vz * c.v;
-                return projectPoint(lx, ly, lz, cosY, sinY, cosX, sinX, fov, halfW, halfH);
-            });
-
-            const frameCol = PALETTE_U32[11]; // シアン (#73eff7)
-            drawLine3D(fCorners[0], fCorners[1], frameCol, true);
-            drawLine3D(fCorners[1], fCorners[2], frameCol, true);
-            drawLine3D(fCorners[2], fCorners[3], frameCol, true);
-            drawLine3D(fCorners[3], fCorners[0], frameCol, true);
-        }
+      }
     }
 
-    // ------------------------------------------------------------------------
-    // デバッグビュー切替（ステンシルバッファ可視化 / Zバッファ可視化）
-    // ------------------------------------------------------------------------
-    if (viewMode === 'stencil') {
-        for (let i = 0; i < NUM_PIXELS; i++) {
-            const s = stencilBuffer[i];
-            if (s !== 0) {
-                // ステンシル値 != 0（切り口マスク）を鮮やかなシアン/イエローで強調表示
-                pixelBuffer[i] = (s === 1) ? PALETTE_U32[11] : PALETTE_U32[4];
-            } else if (zBuffer[i] < 9000.0) {
-                // モデル本体は暗いグレーでシルエット表示
-                pixelBuffer[i] = PALETTE_U32[15];
-            } else {
-                pixelBuffer[i] = PALETTE_U32[0];
-            }
+    // PASS 1: Stencil-Only Winding Count Pass (Color OFF, Z-Test/Write OFF)
+    if (clipEnabled) {
+      for (let i = 0; i < renderList.length; i++) {
+        const item = renderList[i];
+        rasterizeStencilOnlyPass(item.p0, item.p1, item.p2, item.isFront);
+      }
+    }
+
+    // PASS 2: Front-Face Mesh Color & Z-Buffer Pass (Backfaces Culled)
+    if (renderMode === 'wire') {
+      for (let i = 0; i < renderList.length; i++) {
+        const item = renderList[i];
+        if (!item.isFront) continue;
+        const col = PAL32[item.ramp[2]];
+        drawLine2D(item.p0.x, item.p0.y, item.p1.x, item.p1.y, col);
+        drawLine2D(item.p1.x, item.p1.y, item.p2.x, item.p2.y, col);
+        drawLine2D(item.p2.x, item.p2.y, item.p0.x, item.p0.y, col);
+      }
+    } else if (renderMode !== 'stencil') {
+      for (let i = 0; i < renderList.length; i++) {
+        const item = renderList[i];
+        if (!item.isFront) continue;
+        rasterizeFrontColorPass(item.p0, item.p1, item.p2, item.ramp, item.shadeLevel);
+      }
+    }
+
+    // PASS 3: Stencil Cross-Section Cap Pass (ONLY when camera faces the cut plane!)
+    if (clipEnabled && renderMode !== 'wire') {
+      const { nx, ny, nz, d } = plane;
+
+      const pnx1 = nx * cosY + nz * sinY;
+      const pnz1 = -nx * sinY + nz * cosY;
+      const pny2 = ny * cosX - pnz1 * sinX;
+      const pnz2 = ny * sinX + pnz1 * cosX;
+
+      const cx = nx * d;
+      const cy = ny * d;
+      const cz = nz * d;
+      const cx1 = cx * cosY + cz * sinY;
+      const cz1 = -cx * sinY + cz * cosY;
+      const cy2 = cy * cosX - cz1 * sinX;
+      const cz2 = cy * sinX + cz1 * cosX + camDist;
+
+      const facingCamera = -(pnx1 * cx1 + pny2 * cy2 + pnz2 * cz2);
+
+      if (facingCamera > 1e-4) {
+        const upX = Math.abs(ny) < 0.9 ? 0 : 1;
+        const upY = Math.abs(ny) < 0.9 ? 1 : 0;
+        const upZ = 0;
+        let ux = upY * nz - upZ * ny;
+        let uy = upZ * nx - upX * nz;
+        let uz = upX * ny - upY * nx;
+        const uLen = Math.hypot(ux, uy, uz);
+        ux /= uLen; uy /= uLen; uz /= uLen;
+        const vx = ny * uz - nz * uy;
+        const vy = nz * ux - nx * uz;
+        const vz = nx * uy - ny * ux;
+
+        const S = 1.25;
+
+        const q0 = worldToScreen(cx - ux * S - vx * S, cy - uy * S - vy * S, cz - uz * S - vz * S, cosY, sinY, cosX, sinX);
+        const q1 = worldToScreen(cx + ux * S - vx * S, cy + uy * S - vy * S, cz + uz * S - vz * S, cosY, sinY, cosX, sinX);
+        const q2 = worldToScreen(cx + ux * S + vx * S, cy + uy * S + vy * S, cz + uz * S + vz * S, cosY, sinY, cosX, sinX);
+        const q3 = worldToScreen(cx - ux * S + vx * S, cy - uy * S + vy * S, cz - uz * S + vz * S, cosY, sinY, cosX, sinX);
+
+        if (q0 && q1 && q2 && q3) {
+          const capCol32 = PAL32[capColorIndex];
+          const edgeIdx = capColorIndex > 0 ? capColorIndex - 1 : 15;
+          const capEdgeCol32 = PAL32[edgeIdx];
+          rasterizeStencilCapPass(q0, q1, q2, capCol32, capEdgeCol32);
+          rasterizeStencilCapPass(q0, q2, q3, capCol32, capEdgeCol32);
         }
-    } else if (viewMode === 'zbuffer') {
-        const zPalette = [12, 11, 10, 9, 8, 15, 0];
-        for (let i = 0; i < NUM_PIXELS; i++) {
-            const z = zBuffer[i];
-            if (z < 9000.0) {
-                const normZ = Math.max(0, Math.min(1, (z - 2.3) / 3.0));
-                const zi = Math.min(zPalette.length - 1, Math.floor(normZ * zPalette.length));
-                pixelBuffer[i] = PALETTE_U32[zPalette[zi]];
-            } else {
-                pixelBuffer[i] = PALETTE_U32[0];
-            }
+      }
+    }
+
+    // Stencil Buffer Debug Visualization Mode
+    if (renderMode === 'stencil') {
+      for (let i = 0; i < SIZE; i++) {
+        const sv = stencilBuffer[i];
+        if (sv !== 0) {
+          pixelBuf[i] = sv === 1 ? PAL32[5] : sv === 255 ? PAL32[2] : PAL32[4];
         }
+      }
     }
 
     ctx.putImageData(imgData, 0, 0);
-}
+    hudStats.textContent = `TRIS: ${renderList.length} | FPS: ${fps}`;
+  }
 
-/**
- * ============================================================================
- * 8. インタラクティブ操作（モバイルスクロール抑止・ピンチズーム・UIイベント）
- * ============================================================================
- */
-const viewport = document.getElementById('viewport-container');
-let isDragging = false;
-let prevX = 0, prevY = 0;
-let pinchStartDist = 0;
-let pinchStartCamDist = camDist;
-
-function onPointerDown(clientX, clientY) {
-    isDragging = true;
-    prevX = clientX;
-    prevY = clientY;
-}
-
-function onPointerMove(clientX, clientY) {
-    if (!isDragging) return;
-    const dx = clientX - prevX;
-    const dy = clientY - prevY;
-    prevX = clientX;
-    prevY = clientY;
-
-    rotY += dx * 0.012;
-    rotX = Math.max(-1.25, Math.min(1.25, rotX + dy * 0.012));
-}
-
-function onPointerUp() {
-    isDragging = false;
-    pinchStartDist = 0;
-}
-
-function getTouchDistance(touches) {
-    return Math.hypot(
-        touches[0].clientX - touches[1].clientX,
-        touches[0].clientY - touches[1].clientY
-    );
-}
-
-viewport.addEventListener('mousedown', (e) => onPointerDown(e.clientX, e.clientY));
-window.addEventListener('mousemove', (e) => onPointerMove(e.clientX, e.clientY));
-window.addEventListener('mouseup', onPointerUp);
-
-viewport.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    if (e.touches.length === 1) {
-        onPointerDown(e.touches[0].clientX, e.touches[0].clientY);
-    } else if (e.touches.length === 2) {
-        isDragging = false;
-        pinchStartDist = getTouchDistance(e.touches);
-        pinchStartCamDist = camDist;
-    }
-}, { passive: false });
-
-viewport.addEventListener('touchmove', (e) => {
-    e.preventDefault();
-    if (e.touches.length === 1 && isDragging) {
-        onPointerMove(e.touches[0].clientX, e.touches[0].clientY);
-    } else if (e.touches.length === 2 && pinchStartDist > 0) {
-        const currentDist = getTouchDistance(e.touches);
-        const scale = pinchStartDist / Math.max(10, currentDist);
-        camDist = Math.max(2.6, Math.min(6.5, pinchStartCamDist * scale));
-    }
-}, { passive: false });
-
-viewport.addEventListener('touchend', (e) => {
-    e.preventDefault();
-    if (e.touches.length === 1) {
-        pinchStartDist = 0;
-        onPointerDown(e.touches[0].clientX, e.touches[0].clientY);
-    } else if (e.touches.length === 0) {
-        onPointerUp();
-    }
-}, { passive: false });
-
-viewport.addEventListener('touchcancel', onPointerUp, { passive: false });
-
-viewport.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    camDist = Math.max(2.6, Math.min(6.5, camDist + e.deltaY * 0.003));
-}, { passive: false });
-
-// ビューモード切替ボタン
-const viewBtns = document.querySelectorAll('.view-btn');
-const badgeMode = document.getElementById('badge-mode');
-viewBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-        viewMode = btn.dataset.view;
-        viewBtns.forEach(b => {
-            const active = b.dataset.view === viewMode;
-            b.className = active
-                ? 'view-btn py-1.5 px-2 bg-[#3b5dc9] text-[#f4f4f4] text-[11px] mono font-bold rounded-lg border border-[#73eff7]/60 transition'
-                : 'view-btn py-1.5 px-2 bg-[#25283d] hover:bg-[#333c57] text-[#94b0c2] text-[11px] mono font-bold rounded-lg border border-[#333c57] transition';
-        });
-        const labels = {
-            normal: 'MODE: LIT + CAP',
-            stencil: 'MODE: STENCIL BUFFER',
-            zbuffer: 'MODE: Z-BUFFER'
-        };
-        badgeMode.textContent = labels[viewMode];
-    });
-});
-
-// クリッピング軸切替ボタン
-const axisBtns = document.querySelectorAll('.axis-btn');
-const sliderOffset = document.getElementById('slider-offset');
-const valOffset = document.getElementById('val-offset');
-
-function setAxisRanges(axis) {
-    clipAxis = axis;
-    if (axis === 'y') {
-        sliderOffset.min = "-0.70";
-        sliderOffset.max = "2.25";
-        clipOffset = 0.85;
-    } else if (axis === 'x') {
-        sliderOffset.min = "-0.95";
-        sliderOffset.max = "0.95";
-        clipOffset = 0.0;
-    } else if (axis === 'z') {
-        sliderOffset.min = "-0.65";
-        sliderOffset.max = "0.85";
-        clipOffset = 0.15;
-    } else {
-        sliderOffset.min = "-0.80";
-        sliderOffset.max = "1.85";
-        clipOffset = 0.65;
-    }
-    sliderOffset.value = clipOffset.toFixed(2);
-    valOffset.textContent = (clipOffset >= 0 ? '+' : '') + clipOffset.toFixed(2);
-}
-
-axisBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-        setAxisRanges(btn.dataset.axis);
-        axisBtns.forEach(b => {
-            const active = b.dataset.axis === clipAxis;
-            b.className = active
-                ? 'axis-btn py-1.5 bg-[#3b5dc9] text-[#f4f4f4] text-[11px] mono font-bold rounded-lg border border-[#73eff7]/50 transition'
-                : 'axis-btn py-1.5 bg-[#1a1c2c] hover:bg-[#333c57] text-[#94b0c2] text-[11px] mono font-bold rounded-lg border border-[#333c57] transition';
-        });
-    });
-});
-
-sliderOffset.addEventListener('input', (e) => {
-    clipOffset = parseFloat(e.target.value);
-    valOffset.textContent = (clipOffset >= 0 ? '+' : '') + clipOffset.toFixed(2);
-});
-
-document.getElementById('opt-clip-enable').addEventListener('change', (e) => {
-    clipEnabled = e.target.checked;
-    document.getElementById('badge-stencil').textContent = clipEnabled ? 'CLIP: ON' : 'CLIP: OFF';
-});
-
-document.getElementById('btn-flip-plane').addEventListener('click', () => {
-    clipFlip = !clipFlip;
-});
-
-document.getElementById('opt-plane-grid').addEventListener('change', (e) => {
-    showPlaneGrid = e.target.checked;
-});
-
-document.getElementById('opt-cap-grid').addEventListener('change', (e) => {
-    capPatternGrid = e.target.checked;
-});
-
-document.getElementById('opt-dither').addEventListener('change', (e) => {
-    useDither = e.target.checked;
-});
-
-document.getElementById('opt-crt').addEventListener('change', (e) => {
-    document.getElementById('crt-effect').classList.toggle('hidden', !e.target.checked);
-});
-
-document.getElementById('btn-reset').addEventListener('click', () => {
-    rotY = 0.55;
-    rotX = 0.25;
-    camDist = 4.3;
-});
-
-const btnPose = document.getElementById('btn-pose');
-btnPose.addEventListener('click', () => {
-    jumpPose = !jumpPose;
-    btnPose.textContent = `POSE: ${jumpPose ? 'JUMP' : 'IDLE'}`;
-    btnPose.classList.toggle('bg-[#3b5dc9]', jumpPose);
-    btnPose.classList.toggle('bg-[#333c57]', !jumpPose);
-});
-
-const btnAutoRotate = document.getElementById('btn-autorotate');
-btnAutoRotate.addEventListener('click', () => {
-    autoRotate = !autoRotate;
-    btnAutoRotate.textContent = `AUTO ROT: ${autoRotate ? 'ON' : 'OFF'}`;
-    btnAutoRotate.className = autoRotate
-        ? 'px-3 py-1.5 bg-[#38b764] active:scale-95 text-[11px] mono font-semibold rounded-lg transition text-[#1a1c2c]'
-        : 'px-3 py-1.5 bg-[#333c57] active:scale-95 text-[11px] mono font-semibold rounded-lg transition text-[#f4f4f4]';
-});
-
-/**
- * ============================================================================
- * 9. アニメーションループ
- * ============================================================================
- */
-let lastTime = performance.now();
-let frameCount = 0;
-let fpsTimer = 0;
-const fpsDisplay = document.getElementById('stat-fps');
-
-function mainLoop(now) {
-    const dt = (now - lastTime) / 1000;
-    lastTime = now;
-
-    if (autoRotate && !isDragging) {
-        rotY += 0.75 * dt;
-    }
-
-    renderScene();
-
-    frameCount++;
-    fpsTimer += dt;
-    if (fpsTimer >= 0.5) {
-        fpsDisplay.textContent = Math.round(frameCount / fpsTimer);
-        frameCount = 0;
-        fpsTimer = 0;
-    }
-
-    requestAnimationFrame(mainLoop);
-}
-
-window.onload = function () {
-    requestAnimationFrame(mainLoop);
-};
+  requestAnimationFrame(render);
+})();
 </script>
 </body>
 </html>
