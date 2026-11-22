@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>MSX / TIC-80 CPU Polygon Marbling Simulation</title>
+<style>
+  * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+  body {
+    margin: 0; padding: 12px;
+    background: #14161d; color: #f4f4f4;
+    font-family: 'Courier New', Consolas, monospace;
+    display: flex; flex-direction: column; align-items: center;
+    min-height: 100vh;
+    touch-action: none;
+  }
+  h1 { font-size: 16px; margin: 4px 0 8px; letter-spacing: 0.5px; color: #73eff7; text-align: center; }
+  .screen-wrap {
+    position: relative;
+    border: 4px solid #333c57;
+    background: #000;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+    width: 100%; max-width: 640px;
+    aspect-ratio: 4 / 3;
+  }
+  canvas {
+    width: 100%; height: 100%; display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    cursor: crosshair;
+  }
+  .controls {
+    width: 100%; max-width: 640px;
+    margin-top: 10px;
+    display: flex; flex-direction: column; gap: 8px;
+    background: #1e222d; padding: 10px; border-radius: 6px;
+    border: 1px solid #333c57;
+  }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; }
+  button {
+    background: #29366f; color: #f4f4f4;
+    border: 1px solid #41a6f6; border-radius: 4px;
+    padding: 6px 10px; font-family: inherit; font-size: 12px;
+    cursor: pointer; transition: 0.1s;
+  }
+  button:hover { background: #3b5dc9; }
+  button.active { background: #38b764; border-color: #a7f070; color: #1a1c2c; font-weight: bold; }
+  button.mode-btn.active { background: #ef7d57; border-color: #ffcd75; color: #1a1c2c; }
+  .palette { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; }
+  .swatch {
+    width: 24px; height: 24px; border-radius: 3px;
+    border: 2px solid #333c57; cursor: pointer;
+  }
+  .swatch.selected { border-color: #ffffff; transform: scale(1.15); box-shadow: 0 0 6px #fff; }
+  .status { font-size: 11px; color: #94b0c2; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>MSX CPU POLYGON MARBLING (256x192)</h1>
+  <div class="screen-wrap">
+    <canvas id="scr" width="256" height="192"></canvas>
+  </div>
+
+  <div class="controls">
+    <div class="row">
+      <button class="mode-btn active" data-mode="TIC80">TIC-80 (16色)</button>
+      <button class="mode-btn" data-mode="SCREEN8">MSX2 SCREEN 8 (256色)</button>
+      <button class="mode-btn" data-mode="SCREEN12">MSX2+ SCREEN 12 (YJK)</button>
+    </div>
+
+    <div class="row">
+      <button class="tool-btn active" data-tool="drop">💧 垂らす (Drop)</button>
+      <button class="tool-btn" data-tool="swirl">🌀 かき混ぜ (Swirl)</button>
+      <button class="tool-btn" data-tool="comb">🪮 櫛で梳く (Comb)</button>
+      <button id="btnDither" class="active">▦ ディザ: ON</button>
+      <button id="btnWire">△ ワイヤー: OFF</button>
+      <button id="btnClear">🗑 リセット</button>
+    </div>
+
+    <div class="palette" id="palette"></div>
+    <div class="status" id="status">256x192 | CPU Software Rasterizer | Ready</div>
+  </div>
+
+<script>
+(() => {
+  const W = 256, H = 192;
+  const canvas = document.getElementById('scr');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const imgData = ctx.createImageData(W, H);
+  const pixels32 = new Uint32Array(imgData.data.buffer);
+
+  // TIC-80 Sweetie-16 Palette (RGB)
+  const TIC80_PAL = [
+    [26, 28, 44],   [93, 39, 93],   [177, 62, 83],  [239, 125, 87],
+    [255, 205, 117],[167, 240, 112],[56, 183, 100], [37, 113, 121],
+    [41, 54, 111],  [59, 93, 201],  [65, 166, 246], [115, 239, 247],
+    [244, 244, 244],[148, 176, 194],[86, 108, 134], [51, 60, 87]
+  ];
+
+  // 4x4 Bayer Matrix
+  const BAYER = [
+     0,  8,  2, 10,
+    12,  4, 14,  6,
+     3, 11,  1,  9,
+    15,  7, 13,  5
+  ];
+
+  // Fluid Simulation Grid (128x96)
+  const GW = 128, GH = 96;
+  const N = GW * GH;
+  let vx = new Float32Array(N);
+  let vy = new Float32Array(N);
+  let vx0 = new Float32Array(N);
+  let vy0 = new Float32Array(N);
+  let p = new Float32Array(N);
+  let div = new Float32Array(N);
+
+  let colR = new Float32Array(N);
+  let colG = new Float32Array(N);
+  let colB = new Float32Array(N);
+  let colR0 = new Float32Array(N);
+  let colG0 = new Float32Array(N);
+  let colB0 = new Float32Array(N);
+
+  // Linear RGB framebuffer before display encoding (256x192)
+  const fbR = new Uint8Array(W * H);
+  const fbG = new Uint8Array(W * H);
+  const fbB = new Uint8Array(W * H);
+
+  // State
+  let displayMode = 'TIC80'; // 'TIC80' | 'SCREEN8' | 'SCREEN12'
+  let tool = 'drop';
+  let useDither = true;
+  let showWire = false;
+  let selectedColorIdx = 10; // Bright blue default
+
+  // Build Palette UI
+  const palEl = document.getElementById('palette');
+  TIC80_PAL.forEach((rgb, idx) => {
+    const sw = document.createElement('div');
+    sw.className = 'swatch' + (idx === selectedColorIdx ? ' selected' : '');
+    sw.style.backgroundColor = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+    sw.onclick = () => {
+      document.querySelectorAll('.swatch').forEach(el => el.classList.remove('selected'));
+      sw.classList.add('selected');
+      selectedColorIdx = idx;
+      if (tool !== 'drop') {
+        tool = 'drop';
+        updateToolButtons();
+      }
+    };
+    palEl.appendChild(sw);
+  });
+
+  function updateToolButtons() {
+    document.querySelectorAll('.tool-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.tool === tool);
+    });
+  }
+
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      displayMode = btn.dataset.mode;
+    };
+  });
+
+  document.querySelectorAll('.tool-btn').forEach(btn => {
+    btn.onclick = () => {
+      tool = btn.dataset.tool;
+      updateToolButtons();
+    };
+  });
+
+  document.getElementById('btnDither').onclick = (e) => {
+    useDither = !useDither;
+    e.target.textContent = `▦ ディザ: ${useDither ? 'ON' : 'OFF'}`;
+    e.target.classList.toggle('active', useDither);
+  };
+
+  document.getElementById('btnWire').onclick = (e) => {
+    showWire = !showWire;
+    e.target.textContent = `△ ワイヤー: ${showWire ? 'ON' : 'OFF'}`;
+    e.target.classList.toggle('active', showWire);
+  };
+
+  function resetFluid() {
+    vx.fill(0); vy.fill(0);
+    // Base water color (deep TIC-80 navy)
+    const base = TIC80_PAL[0];
+    colR.fill(base[0]);
+    colG.fill(base[1]);
+    colB.fill(base[2]);
+    // Drop a few initial ink drops for immediate visual feedback
+    dropInk(GW * 0.35, GH * 0.45, 11, TIC80_PAL[10]);
+    dropInk(GW * 0.62, GH * 0.52, 12, TIC80_PAL[3]);
+    dropInk(GW * 0.48, GH * 0.58, 9,  TIC80_PAL[4]);
+  }
+
+  document.getElementById('btnClear').onclick = resetFluid;
+
+  // Fluid Operations: Marbling Drop (area-preserving radial displacement)
+  function dropInk(cx, cy, radius, rgb) {
+    const r2 = radius * radius;
+    const minX = Math.max(1, Math.floor(cx - radius * 2.5));
+    const maxX = Math.min(GW - 2, Math.ceil(cx + radius * 2.5));
+    const minY = Math.max(1, Math.floor(cy - radius * 2.5));
+    const maxY = Math.min(GH - 2, Math.ceil(cy + radius * 2.5));
+
+    // Incompressible radial push (marbling physics)
+    colR0.set(colR); colG0.set(colG); colB0.set(colB);
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const dx = x - cx;
+        const dy = y - cy;
+        const d2 = dx * dx + dy * dy;
+        const idx = y * GW + x;
+        if (d2 < r2) {
+          colR[idx] = rgb[0];
+          colG[idx] = rgb[1];
+          colB[idx] = rgb[2];
+        } else if (d2 > 0.001) {
+          const d = Math.sqrt(d2);
+          const srcD = Math.sqrt(Math.max(0, d2 - r2));
+          const sx = cx + (dx / d) * srcD;
+          const sy = cy + (dy / d) * srcD;
+          const c = sampleBilinear(colR0, colG0, colB0, sx, sy);
+          colR[idx] = c[0];
+          colG[idx] = c[1];
+          colB[idx] = c[2];
+          // Add slight outward velocity pulse
+          const falloff = Math.exp(-d2 / (r2 * 4));
+          vx[idx] += (dx / d) * falloff * 1.2;
+          vy[idx] += (dy / d) * falloff * 1.2;
+        }
+      }
+    }
+  }
+
+  function addForce(x, y, fx, fy, radius) {
+    const r2 = radius * radius;
+    const minX = Math.max(1, Math.floor(x - radius * 2));
+    const maxX = Math.min(GW - 2, Math.ceil(x + radius * 2));
+    const minY = Math.max(1, Math.floor(y - radius * 2));
+    const maxY = Math.min(GH - 2, Math.ceil(y + radius * 2));
+    for (let j = minY; j <= maxY; j++) {
+      for (let i = minX; i <= maxX; i++) {
+        const dx = i - x, dy = j - y;
+        const d2 = dx * dx + dy * dy;
+        const w = Math.exp(-d2 / r2);
+        const idx = j * GW + i;
+        vx[idx] += fx * w;
+        vy[idx] += fy * w;
+      }
+    }
+  }
+
+  function sampleBilinear(arrR, arrG, arrB, x, y) {
+    if (x < 0.5) x = 0.5;
+    if (x > GW - 1.5) x = GW - 1.5;
+    if (y < 0.5) y = 0.5;
+    if (y > GH - 1.5) y = GH - 1.5;
+    const x0 = x | 0, y0 = y | 0;
+    const x1 = x0 + 1, y1 = y0 + 1;
+    const tx = x - x0, ty = y - y0;
+    const itx = 1 - tx, ity = 1 - ty;
+    const i00 = y0 * GW + x0, i10 = y0 * GW + x1;
+    const i01 = y1 * GW + x0, i11 = y1 * GW + x1;
+    const w00 = itx * ity, w10 = tx * ity, w01 = itx * ty, w11 = tx * ty;
+    return [
+      arrR[i00]*w00 + arrR[i10]*w10 + arrR[i01]*w01 + arrR[i11]*w11,
+      arrG[i00]*w00 + arrG[i10]*w10 + arrG[i01]*w01 + arrG[i11]*w11,
+      arrB[i00]*w00 + arrB[i10]*w10 + arrB[i01]*w01 + arrB[i11]*w11
+    ];
+  }
+
+  function sampleScalar(arr, x, y) {
+    if (x < 0.5) x = 0.5;
+    if (x > GW - 1.5) x = GW - 1.5;
+    if (y < 0.5) y = 0.5;
+    if (y > GH - 1.5) y = GH - 1.5;
+    const x0 = x | 0, y0 = y | 0;
+    const tx = x - x0, ty = y - y0;
+    const itx = 1 - tx, ity = 1 - ty;
+    const i00 = y0 * GW + x0;
+    return (arr[i00]*itx + arr[i00+1]*tx)*ity + (arr[i00+GW]*itx + arr[i00+GW+1]*tx)*ty;
+  }
+
+  // Incompressible Fluid Step (Semi-Lagrangian Advection + Projection)
+  function stepFluid(dt) {
+    // 1. Velocity self-advection + damping
+    vx0.set(vx); vy0.set(vy);
+    for (let y = 1; y < GH - 1; y++) {
+      for (let x = 1; x < GW - 1; x++) {
+        const idx = y * GW + x;
+        const bx = x - vx0[idx] * dt;
+        const by = y - vy0[idx] * dt;
+        vx[idx] = sampleScalar(vx0, bx, by) * 0.985;
+        vy[idx] = sampleScalar(vy0, bx, by) * 0.985;
+      }
+    }
+
+    // 2. Projection (make velocity divergence-free for realistic swirling eddies)
+    for (let y = 1; y < GH - 1; y++) {
+      for (let x = 1; x < GW - 1; x++) {
+        const idx = y * GW + x;
+        div[idx] = -0.5 * (vx[idx + 1] - vx[idx - 1] + vy[idx + GW] - vy[idx - GW]);
+        p[idx] = 0;
+      }
+    }
+    for (let k = 0; k < 10; k++) {
+      for (let y = 1; y < GH - 1; y++) {
+        for (let x = 1; x < GW - 1; x++) {
+          const idx = y * GW + x;
+          p[idx] = (div[idx] + p[idx - 1] + p[idx + 1] + p[idx - GW] + p[idx + GW]) * 0.25;
+        }
+      }
+    }
+    for (let y = 1; y < GH - 1; y++) {
+      for (let x = 1; x < GW - 1; x++) {
+        const idx = y * GW + x;
+        vx[idx] -= 0.5 * (p[idx + 1] - p[idx - 1]);
+        vy[idx] -= 0.5 * (p[idx + GW] - p[idx - GW]);
+      }
+    }
+
+    // 3. Pigment Advection (Semi-Lagrangian)
+    colR0.set(colR); colG0.set(colG); colB0.set(colB);
+    for (let y = 1; y < GH - 1; y++) {
+      for (let x = 1; x < GW - 1; x++) {
+        const idx = y * GW + x;
+        const bx = x - vx[idx] * dt;
+        const by = y - vy[idx] * dt;
+        const c = sampleBilinear(colR0, colG0, colB0, bx, by);
+        colR[idx] = c[0];
+        colG[idx] = c[1];
+        colB[idx] = c[2];
+      }
+    }
+  }
+
+  // CPU Software Triangle Mesh & Gouraud Rasterizer
+  const MW = 32, MH = 24; // 32x24 grid = 1,536 triangles
+  const vertX = new Float32Array((MW + 1) * (MH + 1));
+  const vertY = new Float32Array((MW + 1) * (MH + 1));
+  const vertR = new Float32Array((MW + 1) * (MH + 1));
+  const vertG = new Float32Array((MW + 1) * (MH + 1));
+  const vertB = new Float32Array((MW + 1) * (MH + 1));
+
+  function drawTriangleGouraud(x0, y0, r0, g0, b0, x1, y1, r1, g1, b1, x2, y2, r2, g2, b2) {
+    // Sort vertices by Y ascending
+    if (y0 > y1) { [x0, x1] = [x1, x0]; [y0, y1] = [y1, y0]; [r0, r1] = [r1, r0]; [g0, g1] = [g1, g0]; [b0, b1] = [b1, b0]; }
+    if (y0 > y2) { [x0, x2] = [x2, x0]; [y0, y2] = [y2, y0]; [r0, r2] = [r2, r0]; [g0, g2] = [g2, g0]; [b0, b2] = [b2, b0]; }
+    if (y1 > y2) { [x1, x2] = [x2, x1]; [y1, y2] = [y2, y1]; [r1, r2] = [r2, r1]; [g1, g2] = [g2, g1]; [b1, b2] = [b2, b1]; }
+
+    const iy0 = Math.max(0, Math.ceil(y0));
+    const iy2 = Math.min(H - 1, Math.floor(y2));
+    if (iy0 > iy2) return;
+
+    const totalH = y2 - y0;
+    if (totalH < 0.0001) return;
+
+    for (let y = iy0; y <= iy2; y++) {
+      const secondHalf = y > y1 || y1 === y0;
+      const segH = secondHalf ? (y2 - y1) : (y1 - y0);
+      if (segH < 0.0001) continue;
+
+      const alpha = (y - y0) / totalH;
+      const beta  = secondHalf ? ((y - y1) / segH) : ((y - y0) / segH);
+
+      let ax = x0 + (x2 - x0) * alpha;
+      let ar = r0 + (r2 - r0) * alpha;
+      let ag = g0 + (g2 - g0) * alpha;
+      let ab = b0 + (b2 - b0) * alpha;
+
+      let bx = secondHalf ? (x1 + (x2 - x1) * beta) : (x0 + (x1 - x0) * beta);
+      let br = secondHalf ? (r1 + (r2 - r1) * beta) : (r0 + (r1 - r0) * beta);
+      let bg = secondHalf ? (g1 + (g2 - g1) * beta) : (g0 + (g1 - g0) * beta);
+      let bb = secondHalf ? (b1 + (b2 - b1) * beta) : (b0 + (b1 - b0) * beta);
+
+      if (ax > bx) {
+        [ax, bx] = [bx, ax];
+        [ar, br] = [br, ar];
+        [ag, bg] = [bg, ag];
+        [ab, bb] = [bb, ab];
+      }
+
+      const ixStart = Math.max(0, Math.ceil(ax));
+      const ixEnd   = Math.min(W - 1, Math.floor(bx));
+      const span = bx - ax;
+      const rowOffset = y * W;
+
+      if (span < 0.0001) {
+        if (ixStart <= ixEnd) {
+          const idx = rowOffset + ixStart;
+          fbR[idx] = ar; fbG[idx] = ag; fbB[idx] = ab;
+        }
+        continue;
+      }
+
+      const invSpan = 1.0 / span;
+      for (let x = ixStart; x <= ixEnd; x++) {
+        const t = (x - ax) * invSpan;
+        const idx = rowOffset + x;
+        fbR[idx] = ar + (br - ar) * t;
+        fbG[idx] = ag + (bg - ag) * t;
+        fbB[idx] = ab + (bb - ab) * t;
+      }
+    }
+  }
+
+  function drawLineCPU(x0, y0, x1, y1, r, g, b) {
+    x0 = Math.round(x0); y0 = Math.round(y0);
+    x1 = Math.round(x1); y1 = Math.round(y1);
+    const dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+    const dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+    let err = dx + dy;
+    while (true) {
+      if (x0 >= 0 && x0 < W && y0 >= 0 && y0 < H) {
+        const idx = y0 * W + x0;
+        fbR[idx] = r; fbG[idx] = g; fbB[idx] = b;
+      }
+      if (x0 === x1 && y0 === y1) break;
+      const e2 = 2 * err;
+      if (e2 >= dy) { err += dy; x0 += sx; }
+      if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+  }
+
+  function renderPolygons() {
+    // Update mesh vertices displaced slightly by fluid velocity for tactile wave feel
+    for (let j = 0; j <= MH; j++) {
+      for (let i = 0; i <= MW; i++) {
+        const vIdx = j * (MW + 1) + i;
+        const gx = Math.min(GW - 1, Math.round((i / MW) * (GW - 1)));
+        const gy = Math.min(GH - 1, Math.round((j / MH) * (GH - 1)));
+        const fIdx = gy * GW + gx;
+
+        const isBorder = (i === 0 || i === MW || j === 0 || j === MH);
+        const dispX = isBorder ? 0 : vx[fIdx] * 1.5;
+        const dispY = isBorder ? 0 : vy[fIdx] * 1.5;
+
+        vertX[vIdx] = (i / MW) * W + dispX;
+        vertY[vIdx] = (j / MH) * H + dispY;
+        vertR[vIdx] = colR[fIdx];
+        vertG[vIdx] = colG[fIdx];
+        vertB[vIdx] = colB[fIdx];
+      }
+    }
+
+    // Rasterize two triangles per quad
+    for (let j = 0; j < MH; j++) {
+      for (let i = 0; i < MW; i++) {
+        const i00 = j * (MW + 1) + i;
+        const i10 = i00 + 1;
+        const i01 = i00 + (MW + 1);
+        const i11 = i01 + 1;
+
+        drawTriangleGouraud(
+          vertX[i00], vertY[i00], vertR[i00], vertG[i00], vertB[i00],
+          vertX[i10], vertY[i10], vertR[i10], vertG[i10], vertB[i10],
+          vertX[i01], vertY[i01], vertR[i01], vertG[i01], vertB[i01]
+        );
+        drawTriangleGouraud(
+          vertX[i10], vertY[i10], vertR[i10], vertG[i10], vertB[i10],
+          vertX[i11], vertY[i11], vertR[i11], vertG[i11], vertB[i11],
+          vertX[i01], vertY[i01], vertR[i01], vertG[i01], vertB[i01]
+        );
+      }
+    }
+
+    // Optional wireframe overlay drawn on CPU
+    if (showWire) {
+      for (let j = 0; j < MH; j++) {
+        for (let i = 0; i < MW; i++) {
+          const i00 = j * (MW + 1) + i;
+          const i10 = i00 + 1;
+          const i01 = i00 + (MW + 1);
+          drawLineCPU(vertX[i00], vertY[i00], vertX[i10], vertY[i10], 244, 244, 244);
+          drawLineCPU(vertX[i00], vertY[i00], vertX[i01], vertY[i01], 244, 244, 244);
+          drawLineCPU(vertX[i10], vertY[i10], vertX[i01], vertY[i01], 148, 176, 194);
+        }
+      }
+    }
+  }
+
+  // Nearest TIC-80 Palette Color
+  function nearestTIC80(r, g, b) {
+    let bestIdx = 0;
+    let bestDist = 1e9;
+    for (let i = 0; i < 16; i++) {
+      const pr = TIC80_PAL[i][0];
+      const pg = TIC80_PAL[i][1];
+      const pb = TIC80_PAL[i][2];
+      const dr = r - pr, dg = g - pg, db = b - pb;
+      const d = dr * dr + dg * dg + db * db;
+      if (d < bestDist) {
+        bestDist = d;
+        bestIdx = i;
+      }
+    }
+    return TIC80_PAL[bestIdx];
+  }
+
+  function clampByte(v) {
+    return v < 0 ? 0 : (v > 255 ? 255 : v | 0);
+  }
+
+  // Post-process framebuffer into TIC-80, MSX2 SCREEN 8, or MSX2+ SCREEN 12 (YJK)
+  function encodeDisplay() {
+    if (displayMode === 'TIC80') {
+      for (let y = 0; y < H; y++) {
+        const bRow = (y & 3) << 2;
+        const rowOff = y * W;
+        for (let x = 0; x < W; x++) {
+          const idx = rowOff + x;
+          const d = useDither ? (BAYER[bRow + (x & 3)] - 7.5) * 4.5 : 0;
+          const c = nearestTIC80(fbR[idx] + d, fbG[idx] + d, fbB[idx] + d);
+          pixels32[idx] = (255 << 24) | (c[2] << 16) | (c[1] << 8) | c[0];
+        }
+      }
+    } else if (displayMode === 'SCREEN8') {
+      // MSX2 SCREEN 8: 256 fixed colors (G:3bit, R:3bit, B:2bit)
+      for (let y = 0; y < H; y++) {
+        const bRow = (y & 3) << 2;
+        const rowOff = y * W;
+        for (let x = 0; x < W; x++) {
+          const idx = rowOff + x;
+          const d = useDither ? (BAYER[bRow + (x & 3)] - 7.5) * 2.2 : 0;
+          const r3 = Math.max(0, Math.min(7, Math.round((fbR[idx] + d) / 255 * 7)));
+          const g3 = Math.max(0, Math.min(7, Math.round((fbG[idx] + d) / 255 * 7)));
+          const b2 = Math.max(0, Math.min(3, Math.round((fbB[idx] + d * 1.8) / 255 * 3)));
+
+          const outR = Math.round(r3 * 255 / 7);
+          const outG = Math.round(g3 * 255 / 7);
+          const outB = Math.round(b2 * 255 / 3);
+          pixels32[idx] = (255 << 24) | (outB << 16) | (outG << 8) | outR;
+        }
+      }
+    } else if (displayMode === 'SCREEN12') {
+      // MSX2+ SCREEN 12 (YJK): 4 horizontal pixels share 6-bit signed J and K chroma; each pixel has 5-bit Y
+      for (let y = 0; y < H; y++) {
+        const bRow = (y & 3) << 2;
+        const rowOff = y * W;
+        for (let x = 0; x < W; x += 4) {
+          let sumJ = 0, sumK = 0;
+          const Y5 = new Int32Array(4);
+
+          for (let k = 0; k < 4; k++) {
+            const idx = rowOff + x + k;
+            const d = useDither ? (BAYER[bRow + ((x + k) & 3)] - 7.5) * 0.75 : 0;
+            const r = clampByte(fbR[idx] + d);
+            const g = clampByte(fbG[idx] + d);
+            const b = clampByte(fbB[idx] + d);
+
+            // MSX2+ YJK forward equations (8-bit domain before 5-bit quantization)
+            const yVal = b / 2 + r / 4 + g / 8;
+            const jVal = r - yVal;
+            const kVal = g - yVal;
+
+            Y5[k] = Math.max(0, Math.min(31, Math.round(yVal / 8)));
+            sumJ += jVal;
+            sumK += kVal;
+          }
+
+          // Average J and K across 4-pixel macroblock and quantize to 6-bit signed (-32..+31)
+          const J = Math.max(-32, Math.min(31, Math.round((sumJ / 4) / 8)));
+          const K = Math.max(-32, Math.min(31, Math.round((sumK / 4) / 8)));
+
+          // V9958 Hardware YJK -> RGB decoding equations
+          for (let k = 0; k < 4; k++) {
+            const idx = rowOff + x + k;
+            const Y = Y5[k];
+            const r5 = Math.max(0, Math.min(31, Y + J));
+            const g5 = Math.max(0, Math.min(31, Y + K));
+            const b5 = Math.max(0, Math.min(31, Math.floor((5 * Y - 2 * J - K) / 4)));
+
+            const outR = (r5 << 3) | (r5 >> 2);
+            const outG = (g5 << 3) | (g5 >> 2);
+            const outB = (b5 << 3) | (b5 >> 2);
+            pixels32[idx] = (255 << 24) | (outB << 16) | (outG << 8) | outR;
+          }
+        }
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
+  }
+
+  // Pointer Interaction
+  let isDown = false;
+  let lastGX = 0, lastGY = 0;
+
+  function getGridPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const nx = (clientX - rect.left) / rect.width;
+    const ny = (clientY - rect.top) / rect.height;
+    return [
+      Math.max(1, Math.min(GW - 2, nx * GW)),
+      Math.max(1, Math.min(GH - 2, ny * GH))
+    ];
+  }
+
+  function onPointerDown(e) {
+    e.preventDefault();
+    isDown = true;
+    const [gx, gy] = getGridPos(e);
+    lastGX = gx; lastGY = gy;
+    if (tool === 'drop') {
+      dropInk(gx, gy, 7.5, TIC80_PAL[selectedColorIdx]);
+    }
+  }
+
+  function onPointerMove(e) {
+    if (!isDown) return;
+    e.preventDefault();
+    const [gx, gy] = getGridPos(e);
+    const dx = gx - lastGX;
+    const dy = gy - lastGY;
+
+    if (tool === 'drop') {
+      if (dx * dx + dy * dy > 2.5) {
+        dropInk(gx, gy, 5.5, TIC80_PAL[selectedColorIdx]);
+        lastGX = gx; lastGY = gy;
+      }
+    } else if (tool === 'swirl') {
+      addForce(gx, gy, dx * 2.8, dy * 2.8, 7.0);
+      lastGX = gx; lastGY = gy;
+    } else if (tool === 'comb') {
+      // Multi-prong comb effect across perpendicular axis
+      const len = Math.hypot(dx, dy);
+      if (len > 0.1) {
+        const px = -dy / len;
+        const py = dx / len;
+        for (let prong = -2; prong <= 2; prong++) {
+          const ox = gx + px * prong * 9;
+          const oy = gy + py * prong * 9;
+          if (ox > 1 && ox < GW - 2 && oy > 1 && oy < GH - 2) {
+            addForce(ox, oy, dx * 3.2, dy * 3.2, 2.6);
+          }
+        }
+        lastGX = gx; lastGY = gy;
+      }
+    }
+  }
+
+  function onPointerUp() { isDown = false; }
+
+  canvas.addEventListener('mousedown', onPointerDown);
+  window.addEventListener('mousemove', onPointerMove);
+  window.addEventListener('mouseup', onPointerUp);
+  canvas.addEventListener('touchstart', onPointerDown, { passive: false });
+  window.addEventListener('touchmove', onPointerMove, { passive: false });
+  window.addEventListener('touchend', onPointerUp);
+
+  // Main Animation Loop
+  let frames = 0, lastFpsTime = performance.now();
+  const statusEl = document.getElementById('status');
+
+  resetFluid();
+
+  function loop(now) {
+    stepFluid(0.45);
+    renderPolygons();
+    encodeDisplay();
+
+    frames++;
+    if (now - lastFpsTime >= 500) {
+      const fps = Math.round((frames * 1000) / (now - lastFpsTime));
+      statusEl.textContent = `256x192 | Mode: ${displayMode} | ${MW * MH * 2} Tris (CPU) | ${fps} FPS`;
+      frames = 0;
+      lastFpsTime = now;
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
