@@ -16,6 +16,34 @@
     overflow: hidden;
     touch-action: none;
   }
+  #ctrl-bar {
+    position: fixed;
+    top: 8px;
+    right: 8px;
+    z-index: 30;
+    display: flex;
+    gap: 6px;
+    pointer-events: auto;
+  }
+  .toggle-btn {
+    background: rgba(12, 18, 32, 0.85);
+    color: #fff;
+    border: 1.5px solid #88aaff;
+    border-radius: 4px;
+    padding: 5px 8px;
+    font-family: monospace, sans-serif;
+    font-size: 11px;
+    font-weight: bold;
+    line-height: 1;
+    cursor: pointer;
+    touch-action: manipulation;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+  }
+  .toggle-btn.is-off {
+    background: rgba(55, 16, 22, 0.88);
+    border-color: #ff6677;
+    color: #ffaaaa;
+  }
   #viewport-wrap {
     position: relative;
     width: 100vw;
@@ -35,6 +63,10 @@
 </style>
 </head>
 <body>
+<div id="ctrl-bar">
+  <button id="btn-sound" class="toggle-btn" type="button" aria-pressed="false">SOUND: ON</button>
+  <button id="btn-vibe" class="toggle-btn" type="button" aria-pressed="false">VIBE: ON</button>
+</div>
 <div id="viewport-wrap">
   <canvas id="screen" width="256" height="212"></canvas>
 </div>
@@ -84,6 +116,66 @@
   let seGain = null;
   let noiseBuffer = null;
 
+  let soundMuted = false;
+  let vibeMuted = false;
+
+  const btnSound = document.getElementById("btn-sound");
+  const btnVibe = document.getElementById("btn-vibe");
+
+  function syncAudioMuteState() {
+    if (masterGain && actx) {
+      masterGain.gain.setTargetAtTime(soundMuted ? 0.0 : 0.34, actx.currentTime, 0.02);
+    }
+    if (btnSound) {
+      btnSound.textContent = soundMuted ? "SOUND: OFF" : "SOUND: ON";
+      btnSound.classList.toggle("is-off", soundMuted);
+      btnSound.setAttribute("aria-pressed", String(soundMuted));
+    }
+  }
+
+  function syncVibeMuteState() {
+    if (vibeMuted && navigator.vibrate) {
+      try { navigator.vibrate(0); } catch (e) {}
+    }
+    if (btnVibe) {
+      btnVibe.textContent = vibeMuted ? "VIBE: OFF" : "VIBE: ON";
+      btnVibe.classList.toggle("is-off", vibeMuted);
+      btnVibe.setAttribute("aria-pressed", String(vibeMuted));
+    }
+  }
+
+  function triggerVibrate(pattern) {
+    if (vibeMuted || !navigator.vibrate) return;
+    try { navigator.vibrate(pattern); } catch (e) {}
+  }
+
+  if (btnSound) {
+    btnSound.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      soundMuted = !soundMuted;
+      if (!soundMuted) {
+        ensureAudio();
+      }
+      syncAudioMuteState();
+    });
+    btnSound.addEventListener("click", (e) => {
+      e.stopPropagation();
+    });
+  }
+
+  if (btnVibe) {
+    btnVibe.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      vibeMuted = !vibeMuted;
+      syncVibeMuteState();
+    });
+    btnVibe.addEventListener("click", (e) => {
+      e.stopPropagation();
+    });
+  }
+
   let bgmStepIndex = 0;
   let bgmStepTimer = 0;
 
@@ -105,7 +197,7 @@
     if (!actx) {
       actx = new audioCtxClass();
       masterGain = actx.createGain();
-      masterGain.gain.value = 0.34;
+      masterGain.gain.value = soundMuted ? 0.0 : 0.34;
       masterGain.connect(actx.destination);
 
       bgmGain = actx.createGain();
@@ -220,9 +312,7 @@
     popOsc.start(now);
     popOsc.stop(now + 0.048);
 
-    if (navigator.vibrate) {
-      try { navigator.vibrate(18); } catch (e) {}
-    }
+    triggerVibrate(18);
   }
 
   function playBonkStunSE(scale) {
@@ -261,9 +351,7 @@
     warble.start(now + 0.035);
     warble.stop(now + 0.17);
 
-    if (navigator.vibrate) {
-      try { navigator.vibrate(10); } catch (e) {}
-    }
+    triggerVibrate(10);
   }
 
   function playShutterCloseSE() {
@@ -318,9 +406,7 @@
     latchOsc.start(latchTime);
     latchOsc.stop(latchTime + 0.085);
 
-    if (navigator.vibrate) {
-      try { navigator.vibrate([12, 35, 22]); } catch (e) {}
-    }
+    triggerVibrate([12, 35, 22]);
   }
 
   function stepRestlessBGM(dt, remainingSec, isPlaying) {
@@ -1756,63 +1842,52 @@
   // User Custom 8x8 Kana Dot Font (71 Characters from Attached Sheets)
   // =========================================================
   const kana8x8 = {
-    // あ行
     "あ": [0x10, 0x7E, 0x10, 0x3C, 0x52, 0x52, 0x3C, 0x00],
     "い": [0x00, 0x44, 0x42, 0x42, 0x48, 0x30, 0x00, 0x00],
     "う": [0x18, 0x00, 0x3C, 0x02, 0x02, 0x04, 0x38, 0x00],
     "え": [0x18, 0x00, 0x3E, 0x04, 0x18, 0x24, 0x42, 0x00],
     "お": [0x20, 0x7A, 0x24, 0x38, 0x44, 0x44, 0x38, 0x00],
-    // か行
     "か": [0x20, 0x24, 0x7A, 0x2A, 0x2A, 0x4A, 0x54, 0x00],
     "き": [0x10, 0x7C, 0x10, 0x7C, 0x08, 0x40, 0x3C, 0x00],
     "く": [0x08, 0x10, 0x20, 0x40, 0x20, 0x10, 0x08, 0x00],
     "け": [0x44, 0x44, 0x4E, 0x54, 0x44, 0x48, 0x10, 0x00],
     "こ": [0x00, 0x3C, 0x04, 0x00, 0x40, 0x3E, 0x00, 0x00],
-    // さ行
     "さ": [0x10, 0x7C, 0x10, 0x08, 0x40, 0x3E, 0x00, 0x00],
     "し": [0x20, 0x20, 0x20, 0x20, 0x20, 0x1C, 0x00, 0x00],
     "す": [0x08, 0x7E, 0x08, 0x18, 0x18, 0x08, 0x30, 0x00],
     "せ": [0x08, 0x28, 0x7E, 0x28, 0x28, 0x20, 0x1E, 0x00],
     "そ": [0x38, 0x08, 0x10, 0x7E, 0x20, 0x20, 0x1E, 0x00],
-    // た行
     "た": [0x20, 0x78, 0x20, 0x2E, 0x40, 0x4E, 0x00, 0x00],
     "ち": [0x20, 0x7C, 0x20, 0x3C, 0x42, 0x02, 0x3C, 0x00],
     "つ": [0x00, 0x00, 0x3C, 0x42, 0x02, 0x04, 0x38, 0x00],
     "て": [0x00, 0x7E, 0x08, 0x10, 0x20, 0x20, 0x1E, 0x00],
     "と": [0x20, 0x24, 0x28, 0x30, 0x40, 0x3E, 0x00, 0x00],
-    // な行
     "な": [0x20, 0x74, 0x22, 0x48, 0x48, 0x5C, 0x2A, 0x00],
     "に": [0x40, 0x4E, 0x40, 0x40, 0x48, 0x4E, 0x00, 0x00],
     "ぬ": [0x28, 0x28, 0x7C, 0x52, 0x52, 0x6A, 0x14, 0x00],
     "ね": [0x20, 0x20, 0x7C, 0x2A, 0x6A, 0x2A, 0x24, 0x00],
     "の": [0x00, 0x3C, 0x52, 0x52, 0x62, 0x44, 0x18, 0x00],
-    // は行
     "は": [0x44, 0x44, 0x4E, 0x44, 0x44, 0x5C, 0x2A, 0x00],
     "ひ": [0x00, 0x62, 0x24, 0x42, 0x42, 0x42, 0x3C, 0x00],
     "ふ": [0x18, 0x00, 0x10, 0x18, 0x44, 0x44, 0x38, 0x00],
     "へ": [0x00, 0x00, 0x10, 0x28, 0x44, 0x02, 0x00, 0x00],
     "ほ": [0x4E, 0x44, 0x4E, 0x44, 0x44, 0x5C, 0x2A, 0x00],
-    // ま行
     "ま": [0x08, 0x3E, 0x08, 0x3E, 0x08, 0x3C, 0x2A, 0x00],
     "み": [0x38, 0x08, 0x08, 0x3E, 0x4A, 0x4A, 0x30, 0x00],
     "む": [0x20, 0x7C, 0x22, 0x30, 0x54, 0x42, 0x3E, 0x00],
     "め": [0x28, 0x28, 0x3C, 0x52, 0x52, 0x62, 0x0C, 0x00],
     "も": [0x20, 0x7C, 0x20, 0x7C, 0x20, 0x22, 0x1C, 0x00],
-    // や行
     "や": [0x28, 0x24, 0x7A, 0x2A, 0x2C, 0x10, 0x10, 0x00],
     "ゆ": [0x20, 0x2C, 0x32, 0x22, 0x22, 0x3C, 0x08, 0x00],
     "よ": [0x10, 0x1E, 0x10, 0x10, 0x38, 0x2C, 0x10, 0x00],
-    // ら行
     "ら": [0x18, 0x20, 0x20, 0x3C, 0x02, 0x02, 0x3C, 0x00],
     "り": [0x24, 0x22, 0x22, 0x22, 0x02, 0x04, 0x18, 0x00],
     "る": [0x3C, 0x08, 0x10, 0x3C, 0x42, 0x5A, 0x3C, 0x00],
     "れ": [0x20, 0x20, 0x7C, 0x2A, 0x6A, 0x22, 0x22, 0x00],
     "ろ": [0x3C, 0x08, 0x10, 0x3C, 0x02, 0x02, 0x3C, 0x00],
-    // わ行
     "わ": [0x20, 0x20, 0x7C, 0x22, 0x62, 0x22, 0x1C, 0x00],
     "を": [0x10, 0x7C, 0x10, 0x3C, 0x48, 0x40, 0x3E, 0x00],
     "ん": [0x10, 0x10, 0x20, 0x38, 0x44, 0x44, 0x08, 0x00],
-    // 濁音
     "が": [0x22, 0x25, 0x7A, 0x2A, 0x2A, 0x4A, 0x54, 0x00],
     "ぎ": [0x12, 0x7D, 0x10, 0x7C, 0x08, 0x40, 0x3C, 0x00],
     "ぐ": [0x0A, 0x11, 0x20, 0x40, 0x20, 0x10, 0x08, 0x00],
@@ -1833,13 +1908,11 @@
     "ぶ": [0x1A, 0x01, 0x10, 0x18, 0x44, 0x44, 0x38, 0x00],
     "べ": [0x02, 0x01, 0x10, 0x28, 0x44, 0x02, 0x00, 0x00],
     "ぼ": [0x4E, 0x45, 0x4E, 0x44, 0x44, 0x5C, 0x2A, 0x00],
-    // 半濁音
     "ぱ": [0x46, 0x46, 0x4E, 0x44, 0x44, 0x5C, 0x2A, 0x00],
     "ぴ": [0x02, 0x62, 0x24, 0x42, 0x42, 0x42, 0x3C, 0x00],
     "ぷ": [0x1A, 0x02, 0x10, 0x18, 0x44, 0x44, 0x38, 0x00],
     "ぺ": [0x02, 0x02, 0x10, 0x28, 0x44, 0x02, 0x00, 0x00],
     "ぽ": [0x4E, 0x46, 0x4E, 0x44, 0x44, 0x5C, 0x2A, 0x00],
-    // 漢字・記号（「--ぼうにんげんをつぶす会--」用）
     "会": [0x18, 0x24, 0x42, 0x3C, 0x00, 0x7E, 0x10, 0x3E],
     "-":  [0x00, 0x00, 0x00, 0x7E, 0x00, 0x00, 0x00, 0x00],
     " ":  [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
@@ -1889,39 +1962,30 @@
   }
 
   function renderTitleOverlay() {
-    // Top MSX2 hardware badge
     drawVramRect(0, 0, W, 13, 0x05);
     drawCenteredText("MSX2 SCREEN 8  256X212", 3, 0xDF, 1);
 
-    // Title Logo Banner with 8x8 scaled Japanese Kana Title
     const logoY = 25 + Math.round(Math.sin(animTime * 3.0) * 2.0);
     drawVramDitherPanel(10, logoY - 6, W - 20, 56, 0x04, 0xFF, 0xFC);
 
-    // Colorful ink stripe under title
     const stripeColors = [0x1C, 0xDF, 0xFC, 0x3F, 0x38, 0xE0];
     for (let i = 0; i < stripeColors.length; i++) {
       const segW = Math.floor((W - 28) / stripeColors.length);
       drawVramRect(14 + i * segW, logoY + 42, segW, 3, stripeColors[i]);
     }
 
-    // Main Title: 「ぼうぷち」 8x8 font scaled x3 -> 24x24px per char
     drawCenteredKana8x8("ぼうぷち", logoY + 1, 0xFF, 3, 0x00);
-
-    // Subtitle: 「--ぼうにんげんをつぶす会--」 8x8 font (1x scale)
     drawCenteredKana8x8("--ぼうにんげんをつぶす会--", logoY + 29, 0xFC, 1, 0x00);
 
-    // Compact rule hint box
     drawVramDitherPanel(24, 96, W - 48, 44, 0x04, 0x92, 0x4A);
     drawCenteredText("TAP STICKMEN AGAINST", 103, 0xFF, 1);
     drawCenteredText("WALL OR FLOOR TO CRUSH!", 114, 0xE0, 1);
     drawCenteredText("TIME LIMIT: 10 SEC", 127, 0xFC, 1);
 
-    // High score readout if played before
     if (bestSquashed > 0) {
       drawCenteredText("BEST:" + bestSquashed + "  MAX STG:" + bestStage, 148, 0xDF, 1);
     }
 
-    // Blinking Start Prompt
     if (Math.floor(animTime * 2.8) % 2 === 0) {
       drawVramDitherPanel(44, 162, W - 88, 22, 0x10, 0xFC, 0xFF);
       drawCenteredText("TAP TO START", 169, 0xFC, 1);
@@ -1934,19 +1998,15 @@
     const rank = computeRank();
     const accuracy = totalTaps > 0 ? Math.min(100, Math.round((totalHits / totalTaps) * 100)) : 0;
 
-    // Header Banner
     drawVramRect(0, 0, W, 16, 0x10);
     drawCenteredText("TIME UP! - GAME OVER", 4, 0xFC, 1);
 
-    // Main Result Card
     drawVramDitherPanel(14, 22, W - 28, 146, 0x04, 0xFF, 0xDF);
 
-    // Rank Badge on right side of card
     drawVramDitherPanel(180, 32, 48, 46, 0x08, rank.color, 0xFF);
     drawVramText("RANK", 192, 37, 0xDF, 1);
     drawVramText(rank.grade, 196, 50, rank.color, 3);
 
-    // Primary Score & Stage stats
     drawVramText("SQUASHED", 24, 34, 0xDF, 1);
     drawVramText(String(totalSquashed), 24, 46, 0xFC, 3);
 
@@ -1954,10 +2014,8 @@
       drawVramText("NEW RECORD!", 92, 56, 0x1C, 1);
     }
 
-    // Horizontal divider
     drawVramRect(22, 83, W - 44, 1, 0x92);
 
-    // Detailed Breakdown Rows
     drawVramText("REACHED STAGE", 24, 91, 0xFF, 1);
     drawVramText("STAGE " + stageNum, 152, 91, 0xE0, 1);
 
@@ -1970,11 +2028,9 @@
     drawVramText("BEST RECORD", 24, 130, 0xFF, 1);
     drawVramText(bestSquashed + " (STG " + bestStage + ")", 152, 130, 0x3F, 1);
 
-    // Rank Comment Footer inside card
     drawVramRect(22, 144, W - 44, 1, 0x4A);
     drawCenteredText(rank.label, 151, rank.color, 1);
 
-    // Action Buttons at bottom
     if (resultElapsed >= 0.55) {
       if (Math.floor(animTime * 3.0) % 2 === 0) {
         drawCenteredText("TAP UPPER: RETRY GAME", 176, 0xFC, 1);
@@ -2093,7 +2149,6 @@
       touchRingTimer = Math.max(0, touchRingTimer - dt);
     }
 
-    // State updates
     if (gameState === "PLAYING") {
       timeRemaining -= dt;
       if (timeRemaining <= 0) {
@@ -2122,7 +2177,6 @@
 
     stepRestlessBGM(dt, timeRemaining, gameState === "PLAYING");
 
-    // 1. Update Stickmen & Ink Droplets
     activeStickmanQuads.length = 0;
     for (let i = 0; i < stickmen.length; i++) {
       if (gameState === "TITLE" || gameState === "PLAYING" || gameState === "SHUTTER_OPENING") {
@@ -2137,7 +2191,6 @@
     }
 
     if (gameState !== "STAGE_CLEAR") {
-      // 2. Dynamic Swooping Camera
       const camTarget = [
         7.5 + Math.sin(animTime * 0.55) * 1.1,
         2.6 + Math.sin(animTime * 0.85) * 0.45,
@@ -2147,7 +2200,6 @@
       const camPitch = 0.56 + Math.sin(animTime * 0.95) * 0.24 + Math.cos(animTime * 0.41) * 0.10;
       const camDist = 17.5 + Math.sin(animTime * 0.68) * 3.8 + Math.cos(animTime * 1.15) * 1.2;
 
-      // 3. Sun & Mode 7 Hybrid Voxel DDA Shadow Setup
       const sunAngleRad = 0.73 + Math.sin(animTime * 0.22) * 0.35;
       const sunDir = normalize([
         Math.cos(sunAngleRad) * 0.72,
@@ -2204,7 +2256,6 @@
         );
       }
 
-      // 4. Camera Transform & Projection
       const cp = Math.cos(camPitch), sp = Math.sin(camPitch);
       const cy = Math.cos(camYaw), sy = Math.sin(camYaw);
       const camEye = [
@@ -2296,7 +2347,6 @@
         }
       }
 
-      // 5. Sky + Main Rasterization
       zbuf.fill(1e9);
       for (let y = 0; y < H; y++) {
         const rowOff = y * W;
@@ -2316,14 +2366,12 @@
         rasterizeMainTriangle(t.v0, t.v1, t.v2, t.r, t.g, t.b, t.shade, t.bias, t.faceBaseOffset);
       }
 
-      // Touch area ripple indicator
       if (touchRingTimer > 0 && gameState === "PLAYING") {
         const tNorm = 1.0 - touchRingTimer / 0.16;
         const curRad = touchRingRadius * (0.65 + tNorm * 0.45);
         drawTouchAreaRing(touchRingX, touchRingY, curRad, touchRingColor);
       }
 
-      // 6. State-Specific VRAM Overlays
       if (gameState === "TITLE") {
         renderTitleOverlay();
       } else if (gameState === "RESULT") {
@@ -2337,7 +2385,6 @@
       }
     }
 
-    // 7. Snappy Shutter Wipe & Attached Stage Clear Text
     if (gameState === "SHUTTER_CLOSING" || gameState === "STAGE_CLEAR" || gameState === "SHUTTER_OPENING") {
       const eased = gameState === "SHUTTER_CLOSING"
         ? shutterProgress * shutterProgress
@@ -2348,7 +2395,6 @@
       renderShutterWipe(eased, bounce);
     }
 
-    // 8. VRAM GRB332 -> Display Canvas Blit
     for (let i = 0; i < W * H; i++) {
       rgba32[i] = grbPalette32[vram[i]];
     }
