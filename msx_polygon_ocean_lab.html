@@ -1,0 +1,1492 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>MSX 256x212 Polygon Ocean Renderer - Parameter Lab</title>
+<style>
+  * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+  body {
+    margin: 0; padding: 12px;
+    background: #0b0e14; color: #e2e8f0;
+    font-family: 'Consolas', 'Monaco', monospace;
+    display: flex; flex-direction: column; align-items: center;
+    min-height: 100vh;
+  }
+  h1 {
+    font-size: 13px; margin: 0 0 8px 0; color: #38bdf8;
+    letter-spacing: 0.04em; text-align: center;
+  }
+  .canvas-wrap {
+    position: relative;
+    border: 2px solid #334155;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.75);
+    background: #000;
+    touch-action: none;
+  }
+  canvas {
+    display: block;
+    width: 512px; height: 424px;
+    max-width: 94vw; max-height: 78vw;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    cursor: grab;
+  }
+  canvas:active { cursor: grabbing; }
+  .hud {
+    position: absolute; top: 6px; left: 6px;
+    background: rgba(10, 15, 25, 0.78);
+    padding: 4px 8px; border-radius: 4px;
+    font-size: 10px; line-height: 1.45;
+    pointer-events: none; color: #cbd5e1;
+    border: 1px solid rgba(56, 189, 248, 0.35);
+  }
+  .panel {
+    margin-top: 10px;
+    width: 512px; max-width: 94vw;
+    background: #151b26;
+    border: 1px solid #2a3444;
+    border-radius: 6px;
+    padding: 10px;
+    font-size: 11px;
+  }
+  .tabs {
+    display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap;
+  }
+  .tab-btn {
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+    border-radius: 4px; padding: 5px 10px; font-family: inherit;
+    font-size: 11px; cursor: pointer;
+  }
+  .tab-btn.active {
+    background: #0284c7; color: #ffffff; border-color: #38bdf8; font-weight: bold;
+  }
+  .tab-page { display: none; }
+  .tab-page.active { display: block; }
+  .grid-2 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 8px 14px;
+  }
+  .slider-item {
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .slider-head {
+    display: flex; justify-content: space-between; color: #cbd5e1;
+  }
+  .slider-val { color: #38bdf8; font-weight: bold; }
+  input[type="range"] {
+    width: 100%; accent-color: #38bdf8; margin: 0; cursor: pointer;
+  }
+  .toggle-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .toggle-grid label {
+    display: flex; align-items: center; gap: 5px; cursor: pointer; color: #e2e8f0;
+  }
+  .action-bar {
+    display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;
+    padding-top: 8px; border-top: 1px solid #263042;
+  }
+  button.act-btn {
+    background: #1e293b; color: #38bdf8; border: 1px solid #38bdf8;
+    border-radius: 4px; padding: 5px 10px; font-family: inherit;
+    font-size: 11px; cursor: pointer;
+  }
+  button.act-btn:hover { background: #38bdf8; color: #0f172a; }
+  button.preset-btn {
+    background: #172033; color: #cbd5e1; border: 1px solid #475569;
+    border-radius: 4px; padding: 4px 8px; font-family: inherit;
+    font-size: 10px; cursor: pointer;
+  }
+  button.preset-btn:hover { border-color: #38bdf8; color: #38bdf8; }
+  .note {
+    margin-top: 8px; font-size: 11px; color: #94a3b8;
+    width: 512px; max-width: 94vw; line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+  <h1>MSX 256×212 POLYGON OCEAN — PARAMETER LAB</h1>
+  <div class="canvas-wrap">
+    <canvas id="screen" width="256" height="212"></canvas>
+    <div class="hud" id="hud">FPS: -- | CPU: -- ms | Tris: --</div>
+  </div>
+
+  <div class="panel">
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="tabWave">波・FFT・Gerstner</button>
+      <button class="tab-btn" data-tab="tabOptics">光・水色・反射・泡</button>
+      <button class="tab-btn" data-tab="tabSys">レイヤー・プリセット</button>
+    </div>
+
+    <!-- TAB 1: Wave & Spectrum Parameters -->
+    <div class="tab-page active" id="tabWave">
+      <div class="grid-2">
+        <div class="slider-item">
+          <div class="slider-head"><span>全体波高スケール</span><span class="slider-val" id="v_waveScale">1.00</span></div>
+          <input type="range" id="p_waveScale" min="0.1" max="2.2" step="0.05" value="1.0">
+        </div>
+        <div class="slider-item">
+          <div class="slider-head"><span>FFT チョッピネス(水平変位)</span><span class="slider-val" id="v_choppiness">1.15</span></div>
+          <input type="range" id="p_choppiness" min="0.0" max="2.6" step="0.05" value="1.15">
+        </div>
+        <div class="slider-item">
+          <div class="slider-head"><span>FFT 振幅ゲイン</span><span class="slider-val" id="v_fftGain">1.00</span></div>
+          <input type="range" id="p_fftGain" min="0.0" max="2.5" step="0.05" value="1.0">
+        </div>
+        <div class="slider-item">
+          <div class="slider-head"><span>Gerstner 波高</span><span class="slider-val" id="v_gerstnerAmp">1.00</span></div>
+          <input type="range" id="p_gerstnerAmp" min="0.0" max="2.5" step="0.05" value="1.0">
+        </div>
+        <div class="slider-item">
+          <div class="slider-head"><span>Gerstner 周波数(波長)</span><span class="slider-val" id="v_gerstnerFreq">1.00</span></div>
+          <input type="range" id="p_gerstnerFreq" min="0.4" max="2.2" step="0.05" value="1.0">
+        </div>
+        <div class="slider-item">
+          <div class="slider-head"><span>浅水変形(Shoaling)強さ</span><span class="slider-val" id="v_shoaling">1.00</span></div>
+          <input type="range" id="p_shoaling" min="0.0" max="2.5" step="0.05" value="1.0">
+        </div>
+        <div class="slider-item">
+          <div class="slider-head"><span>マイクロ法線 さざ波強さ</span><span class="slider-val" id="v_detailAmp">1.00</span></div>
+          <input type="range" id="p_detailAmp" min="0.0" max="3.0" step="0.05" value="1.0">
+        </div>
+        <div class="slider-item">
+          <div class="slider-head"><span>波紋 減衰率(Damping)</span><span class="slider-val" id="v_ripDecay">0.965</span></div>
+          <input type="range" id="p_ripDecay" min="0.90" max="0.992" step="0.002" value="0.965">
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: Optics, Color, Reflection & Foam Parameters -->
+    <div class="tab-page" id="tabOptics">
+      <div class="grid-2">
+        <div class="slider-item">
+          <div class="slider-head"><span>太陽高度</span><span class="slider-val" id="v_sunElev">0.32</span></div>
+          <input type="range" id="p_sunElev" min="0.06" max="1.10" step="0.02" value="0.32">
+        </div>
+        <div class="slider-item">
+          <div class="slider-head"><span>太陽方位角</span><span class="slider-val" id="v_sunAz">-0.55</span></div>
+          <input type="range" id="p_sunAz" min="-3.14" max="3.14" step="0.05" value="-0.55">
+        </div>
+        <div class="slider-item">
+          <div class="slider-head"><span>Beer-Lambert 吸収係数</span><span class="slider-val" id="v_absorb">1.00</span></div>
+          <input type="range" id="p_absorb" min="0.1" max="3.0" step="0.05" value="1.0">
+        </div>
+        <div class="slider-item">
+          <div class="slider-head"><span>コースティクス(集光)強さ</span><span class="slider-val" id="v_caustics">1.00</span></div>
+          <input type="range" id="p_caustics" min="0.0" max="2.5" step="0.05" value="1.0">
+        </div>
+        <div class="slider-item">
+          <div class="slider-head"><span>表面下散乱(SSS)透過光</span><span class="slider-val" id="v_sss">1.00</span></div>
+          <input type="range" id="p_sss" min="0.0" max="3.0" step="0.05" value="1.0">
+        </div>
+        <div class="slider-item">
+          <div class="slider-head"><span>フレネル反射 バイアス</span><span class="slider-val" id="v_fresnelBias">0.02</span></div>
+          <input type="range" id="p_fresnelBias" min="0.0" max="0.35" step="0.01" value="0.02">
+        </div>
+        <div class="slider-item">
+          <div class="slider-head"><span>太陽スペキュラ(キラめき)</span><span class="slider-val" id="v_specPower">1.00</span></div>
+          <input type="range" id="p_specPower" min="0.0" max="2.5" step="0.05" value="1.0">
+        </div>
+        <div class="slider-item">
+          <div class="slider-head"><span>白波(Foam)しきい値＆量</span><span class="slider-val" id="v_foamAmt">1.00</span></div>
+          <input type="range" id="p_foamAmt" min="0.0" max="2.5" step="0.05" value="1.0">
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: Layer Toggles & Presets -->
+    <div class="tab-page" id="tabSys">
+      <div class="toggle-grid">
+        <label><input type="checkbox" id="chkFFT" checked> 1. FFT頂点変位</label>
+        <label><input type="checkbox" id="chkGerstner" checked> 2. Gerstner＋浅水</label>
+        <label><input type="checkbox" id="chkDetail" checked> 3. PSマイクロ法線</label>
+        <label><input type="checkbox" id="chkRefract" checked> 4. PS吸収＆集光</label>
+        <label><input type="checkbox" id="chkReflect" checked> 5. PSフレネル＆反射</label>
+        <label><input type="checkbox" id="chkFoam" checked> 6. PS白波(Foam)</label>
+        <label><input type="checkbox" id="chkWire"> ワイヤーフレーム</label>
+      </div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+        <span style="color:#94a3b8; font-size:10px;">プリセット:</span>
+        <button class="preset-btn" data-preset="calm">凪・リゾート</button>
+        <button class="preset-btn" data-preset="storm">荒波・シケ</button>
+        <button class="preset-btn" data-preset="sunset">夕暮れ・逆光</button>
+        <button class="preset-btn" data-preset="mesh">ポリゴン確認</button>
+      </div>
+    </div>
+
+    <div class="action-bar">
+      <button class="act-btn" id="btnRipple">波紋発生</button>
+      <button class="act-btn" id="btnReset">視点・値リセット</button>
+    </div>
+  </div>
+  <div class="note">
+    操作: ドラッグでカメラ回転 / クリック(タップ)で波紋発生 / タブ切替で波・光学・プリセットを調整
+  </div>
+
+<script>
+(() => {
+  const W = 256;
+  const H = 212;
+  const PIXELS = W * H;
+  const canvas = document.getElementById('screen');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const imgData = ctx.createImageData(W, H);
+  const buf32 = new Uint32Array(imgData.data.buffer);
+  const zBuffer = new Float32Array(PIXELS);
+  const hud = document.getElementById('hud');
+
+  // Tab switching
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  // Parameter registry
+  const paramDefs = [
+    ['waveScale', 1.00, 2],
+    ['choppiness', 1.15, 2],
+    ['fftGain', 1.00, 2],
+    ['gerstnerAmp', 1.00, 2],
+    ['gerstnerFreq', 1.00, 2],
+    ['shoaling', 1.00, 2],
+    ['detailAmp', 1.00, 2],
+    ['ripDecay', 0.965, 3],
+    ['sunElev', 0.32, 2],
+    ['sunAz', -0.55, 2],
+    ['absorb', 1.00, 2],
+    ['caustics', 1.00, 2],
+    ['sss', 1.00, 2],
+    ['fresnelBias', 0.02, 2],
+    ['specPower', 1.00, 2],
+    ['foamAmt', 1.00, 2],
+  ];
+
+  const params = {};
+  const sliders = {};
+  const valueLabels = {};
+
+  for (const [key, defVal, decimals] of paramDefs) {
+    params[key] = defVal;
+    const inp = document.getElementById('p_' + key);
+    const lbl = document.getElementById('v_' + key);
+    sliders[key] = inp;
+    valueLabels[key] = { el: lbl, decimals };
+    inp.addEventListener('input', () => {
+      const v = parseFloat(inp.value);
+      params[key] = v;
+      lbl.textContent = v.toFixed(decimals);
+    });
+  }
+
+  function setParamValue(key, val) {
+    params[key] = val;
+    sliders[key].value = val;
+    valueLabels[key].el.textContent = val.toFixed(valueLabels[key].decimals);
+  }
+
+  const chkFFT = document.getElementById('chkFFT');
+  const chkGerstner = document.getElementById('chkGerstner');
+  const chkDetail = document.getElementById('chkDetail');
+  const chkRefract = document.getElementById('chkRefract');
+  const chkReflect = document.getElementById('chkReflect');
+  const chkFoam = document.getElementById('chkFoam');
+  const chkWire = document.getElementById('chkWire');
+
+  // Presets
+  const presets = {
+    calm: {
+      p: { waveScale: 0.45, choppiness: 0.55, fftGain: 0.50, gerstnerAmp: 0.45, gerstnerFreq: 0.85, shoaling: 0.8, detailAmp: 0.85, ripDecay: 0.975, sunElev: 0.68, sunAz: -0.4, absorb: 0.65, caustics: 1.5, sss: 1.1, fresnelBias: 0.02, specPower: 1.2, foamAmt: 0.4 },
+      wire: false
+    },
+    storm: {
+      p: { waveScale: 1.75, choppiness: 2.05, fftGain: 1.75, gerstnerAmp: 1.80, gerstnerFreq: 1.25, shoaling: 1.8, detailAmp: 1.8, ripDecay: 0.96, sunElev: 0.22, sunAz: -0.9, absorb: 1.35, caustics: 0.5, sss: 1.7, fresnelBias: 0.05, specPower: 0.8, foamAmt: 2.1 },
+      wire: false
+    },
+    sunset: {
+      p: { waveScale: 1.05, choppiness: 1.30, fftGain: 1.05, gerstnerAmp: 1.10, gerstnerFreq: 1.00, shoaling: 1.1, detailAmp: 1.2, ripDecay: 0.97, sunElev: 0.10, sunAz: 0.15, absorb: 1.1, caustics: 0.8, sss: 2.2, fresnelBias: 0.08, specPower: 2.1, foamAmt: 1.1 },
+      wire: false
+    },
+    mesh: {
+      p: { waveScale: 1.25, choppiness: 1.60, fftGain: 1.20, gerstnerAmp: 1.35, gerstnerFreq: 1.00, shoaling: 1.4, detailAmp: 0.4, ripDecay: 0.97, sunElev: 0.42, sunAz: -0.55, absorb: 1.0, caustics: 1.0, sss: 1.0, fresnelBias: 0.02, specPower: 1.0, foamAmt: 1.0 },
+      wire: true
+    }
+  };
+
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const cfg = presets[btn.dataset.preset];
+      if (!cfg) return;
+      for (const [k, v] of Object.entries(cfg.p)) setParamValue(k, v);
+      chkWire.checked = cfg.wire;
+    });
+  });
+
+  // =========================================================================
+  // 1. 2D Radix-2 FFT Ocean Spectrum (N = 64)
+  // =========================================================================
+  const N = 64;
+  const N2 = N * N;
+  const PATCH_SIZE = 28.0;
+
+  const h0Re = new Float32Array(N2);
+  const h0Im = new Float32Array(N2);
+  const h0ConjRe = new Float32Array(N2);
+  const h0ConjIm = new Float32Array(N2);
+  const omegaArr = new Float32Array(N2);
+  const kxArr = new Float32Array(N2);
+  const kzArr = new Float32Array(N2);
+
+  const fftHRe = new Float32Array(N2);
+  const fftHIm = new Float32Array(N2);
+  const fftDxRe = new Float32Array(N2);
+  const fftDxIm = new Float32Array(N2);
+  const fftDzRe = new Float32Array(N2);
+  const fftDzIm = new Float32Array(N2);
+
+  const fftHeight = new Float32Array(N2);
+  const fftDispX = new Float32Array(N2);
+  const fftDispZ = new Float32Array(N2);
+  const fftGradX = new Float32Array(N2);
+  const fftGradZ = new Float32Array(N2);
+  const fftJacobian = new Float32Array(N2);
+
+  let seed = 1337;
+  function rand() {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  }
+  function randGaussian() {
+    let u = 0, v = 0;
+    while (u === 0) u = rand();
+    while (v === 0) v = rand();
+    return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+  }
+
+  function initSpectrum() {
+    const g = 9.81;
+    const windSpeed = 14.0;
+    const windDirX = Math.cos(0.45);
+    const windDirZ = Math.sin(0.45);
+    const L = (windSpeed * windSpeed) / g;
+    const A = 0.012;
+
+    for (let m = 0; m < N; m++) {
+      const kz = (2.0 * Math.PI * (m - N / 2)) / PATCH_SIZE;
+      for (let n = 0; n < N; n++) {
+        const kx = (2.0 * Math.PI * (n - N / 2)) / PATCH_SIZE;
+        const idx = m * N + n;
+        kxArr[idx] = kx;
+        kzArr[idx] = kz;
+        const kLen = Math.hypot(kx, kz);
+        omegaArr[idx] = Math.sqrt(g * kLen);
+
+        if (kLen < 1e-5) continue;
+        const k2 = kLen * kLen;
+        const k4 = k2 * k2;
+        const kDotW = (kx / kLen) * windDirX + (kz / kLen) * windDirZ;
+        let P = (A * Math.exp(-1.0 / (k2 * L * L))) / k4;
+        P *= Math.pow(Math.max(0.0, kDotW), 2.0);
+        if (kDotW < 0) P *= 0.15;
+        P *= Math.exp(-k2 * 0.015);
+
+        const amp = Math.sqrt(P * 0.5);
+        h0Re[idx] = amp * randGaussian();
+        h0Im[idx] = amp * randGaussian();
+      }
+    }
+
+    for (let m = 0; m < N; m++) {
+      const mConj = (N - m) % N;
+      for (let n = 0; n < N; n++) {
+        const nConj = (N - n) % N;
+        const idx = m * N + n;
+        const idxC = mConj * N + nConj;
+        h0ConjRe[idx] = h0Re[idxC];
+        h0ConjIm[idx] = -h0Im[idxC];
+      }
+    }
+  }
+  initSpectrum();
+
+  const bitRev = new Uint8Array(N);
+  for (let i = 0; i < N; i++) {
+    let x = i, y = 0;
+    for (let b = 0; b < 6; b++) { y = (y << 1) | (x & 1); x >>= 1; }
+    bitRev[i] = y;
+  }
+
+  function fft1D(re, im, offset, stride) {
+    for (let i = 0; i < N; i++) {
+      const j = bitRev[i];
+      if (i < j) {
+        const iIdx = offset + i * stride;
+        const jIdx = offset + j * stride;
+        const tr = re[iIdx]; re[iIdx] = re[jIdx]; re[jIdx] = tr;
+        const ti = im[iIdx]; im[iIdx] = im[jIdx]; im[jIdx] = ti;
+      }
+    }
+    for (let size = 2; size <= N; size <<= 1) {
+      const half = size >> 1;
+      const step = (2.0 * Math.PI) / size;
+      const wStepRe = Math.cos(step);
+      const wStepIm = Math.sin(step);
+      for (let i = 0; i < N; i += size) {
+        let wRe = 1.0, wIm = 0.0;
+        for (let k = 0; k < half; k++) {
+          const evenIdx = offset + (i + k) * stride;
+          const oddIdx = offset + (i + k + half) * stride;
+          const oRe = re[oddIdx], oIm = im[oddIdx];
+          const tRe = wRe * oRe - wIm * oIm;
+          const tIm = wRe * oIm + wIm * oRe;
+          re[oddIdx] = re[evenIdx] - tRe;
+          im[oddIdx] = im[evenIdx] - tIm;
+          re[evenIdx] += tRe;
+          im[evenIdx] += tIm;
+          const nextWRe = wRe * wStepRe - wIm * wStepIm;
+          wIm = wRe * wStepIm + wIm * wStepRe;
+          wRe = nextWRe;
+        }
+      }
+    }
+  }
+
+  function fft2D(re, im) {
+    for (let r = 0; r < N; r++) fft1D(re, im, r * N, 1);
+    for (let c = 0; c < N; c++) fft1D(re, im, c, N);
+  }
+
+  function updateFFTOcean(t, choppiness) {
+    for (let idx = 0; idx < N2; idx++) {
+      const w = omegaArr[idx] * t;
+      const cosW = Math.cos(w);
+      const sinW = Math.sin(w);
+      const aRe = h0Re[idx], aIm = h0Im[idx];
+      const bRe = h0ConjRe[idx], bIm = h0ConjIm[idx];
+
+      const hRe = (aRe * cosW - aIm * sinW) + (bRe * cosW + bIm * sinW);
+      const hIm = (aRe * sinW + aIm * cosW) + (-bRe * sinW + bIm * cosW);
+      fftHRe[idx] = hRe;
+      fftHIm[idx] = hIm;
+
+      const kx = kxArr[idx];
+      const kz = kzArr[idx];
+      const kLen = Math.hypot(kx, kz);
+      if (kLen > 1e-5) {
+        const invK = choppiness / kLen;
+        fftDxRe[idx] = hIm * kx * invK;
+        fftDxIm[idx] = -hRe * kx * invK;
+        fftDzRe[idx] = hIm * kz * invK;
+        fftDzIm[idx] = -hRe * kz * invK;
+      } else {
+        fftDxRe[idx] = fftDxIm[idx] = 0;
+        fftDzRe[idx] = fftDzIm[idx] = 0;
+      }
+    }
+
+    fft2D(fftHRe, fftHIm);
+    fft2D(fftDxRe, fftDxIm);
+    fft2D(fftDzRe, fftDzIm);
+
+    const scale = 1.0 / N2;
+    for (let m = 0; m < N; m++) {
+      for (let n = 0; n < N; n++) {
+        const idx = m * N + n;
+        const sign = ((m + n) & 1) ? -1.0 : 1.0;
+        fftHeight[idx] = fftHRe[idx] * sign * scale * 18.0;
+        fftDispX[idx] = fftDxRe[idx] * sign * scale * 18.0;
+        fftDispZ[idx] = fftDzRe[idx] * sign * scale * 18.0;
+      }
+    }
+
+    const cellMeters = PATCH_SIZE / N;
+    const inv2d = 0.5 / cellMeters;
+    for (let m = 0; m < N; m++) {
+      const mPrev = (m - 1 + N) & (N - 1);
+      const mNext = (m + 1) & (N - 1);
+      for (let n = 0; n < N; n++) {
+        const nPrev = (n - 1 + N) & (N - 1);
+        const nNext = (n + 1) & (N - 1);
+        const idx = m * N + n;
+
+        fftGradX[idx] = (fftHeight[m * N + nNext] - fftHeight[m * N + nPrev]) * inv2d;
+        fftGradZ[idx] = (fftHeight[mNext * N + n] - fftHeight[mPrev * N + n]) * inv2d;
+
+        const dDxdx = (fftDispX[m * N + nNext] - fftDispX[m * N + nPrev]) * inv2d;
+        const dDxdz = (fftDispX[mNext * N + n] - fftDispX[mPrev * N + n]) * inv2d;
+        const dDzdx = (fftDispZ[m * N + nNext] - fftDispZ[m * N + nPrev]) * inv2d;
+        const dDzdz = (fftDispZ[mNext * N + n] - fftDispZ[mPrev * N + n]) * inv2d;
+        fftJacobian[idx] = (1.0 + dDxdx) * (1.0 + dDzdz) - dDxdz * dDzdx;
+      }
+    }
+  }
+
+  function sampleFFTBilinear(arr, wx, wz) {
+    const u = ((wx / PATCH_SIZE) % 1 + 1) % 1 * N;
+    const v = ((wz / PATCH_SIZE) % 1 + 1) % 1 * N;
+    const x0 = u | 0, z0 = v | 0;
+    const fx = u - x0, fz = v - z0;
+    const x1 = (x0 + 1) & (N - 1);
+    const z1 = (z0 + 1) & (N - 1);
+    const r0 = z0 * N, r1 = z1 * N;
+    return (arr[r0 + x0] * (1 - fx) + arr[r0 + x1] * fx) * (1 - fz) +
+           (arr[r1 + x0] * (1 - fx) + arr[r1 + x1] * fx) * fz;
+  }
+
+  // =========================================================================
+  // 2. Interactive Ripple Buffer (2D Wave Equation)
+  // =========================================================================
+  const RIP_N = 64;
+  const RIP_EXTENT = 24.0;
+  let ripPrev = new Float32Array(RIP_N * RIP_N);
+  let ripCurr = new Float32Array(RIP_N * RIP_N);
+  let ripNext = new Float32Array(RIP_N * RIP_N);
+
+  function addRipple(wx, wz, strength) {
+    const gx = Math.round(((wx + RIP_EXTENT * 0.5) / RIP_EXTENT) * (RIP_N - 1));
+    const gz = Math.round(((wz + RIP_EXTENT * 0.5) / RIP_EXTENT) * (RIP_N - 1));
+    for (let dz = -2; dz <= 2; dz++) {
+      const z = gz + dz;
+      if (z <= 1 || z >= RIP_N - 2) continue;
+      for (let dx = -2; dx <= 2; dx++) {
+        const x = gx + dx;
+        if (x <= 1 || x >= RIP_N - 2) continue;
+        const d2 = dx * dx + dz * dz;
+        if (d2 <= 4) ripCurr[z * RIP_N + x] -= strength * Math.exp(-d2 * 0.6);
+      }
+    }
+  }
+
+  function stepRipples(decay) {
+    for (let z = 1; z < RIP_N - 1; z++) {
+      const row = z * RIP_N;
+      for (let x = 1; x < RIP_N - 1; x++) {
+        const i = row + x;
+        const avg = (ripCurr[i - 1] + ripCurr[i + 1] + ripCurr[i - RIP_N] + ripCurr[i + RIP_N]) * 0.5;
+        ripNext[i] = (avg - ripPrev[i]) * decay;
+      }
+    }
+    const tmp = ripPrev; ripPrev = ripCurr; ripCurr = ripNext; ripNext = tmp;
+  }
+
+  function sampleRipple(wx, wz) {
+    const u = ((wx + RIP_EXTENT * 0.5) / RIP_EXTENT) * (RIP_N - 1);
+    const v = ((wz + RIP_EXTENT * 0.5) / RIP_EXTENT) * (RIP_N - 1);
+    if (u < 0 || u >= RIP_N - 1 || v < 0 || v >= RIP_N - 1) return 0;
+    const x0 = u | 0, z0 = v | 0;
+    const fx = u - x0, fz = v - z0;
+    const r0 = z0 * RIP_N, r1 = (z0 + 1) * RIP_N;
+    return (ripCurr[r0 + x0] * (1 - fx) + ripCurr[r0 + x0 + 1] * fx) * (1 - fz) +
+           (ripCurr[r1 + x0] * (1 - fx) + ripCurr[r1 + x0 + 1] * fx) * fz;
+  }
+
+  // =========================================================================
+  // 3. Bathymetry & Vertex Shader Displacement Function
+  // =========================================================================
+  function getBathymetry(wx, wz) {
+    const dx = wx + 6.5;
+    const dz = wz - 11.0;
+    const distIsland = Math.hypot(dx * 0.85, dz * 1.15);
+    return 1.65 - distIsland * 0.24 + Math.sin(wx * 0.35) * 0.12 + Math.cos(wz * 0.4) * 0.12;
+  }
+
+  function evalGerstnerDisp3D(wx, wz, t, ampScale, freqScale, shoalScale, depth, out) {
+    const shallowFactor = Math.max(0.15, Math.min(1.0, depth / 3.5));
+    const shoalSteep = 1.0 + (1.0 - shallowFactor) * 0.65 * shoalScale;
+    const damp = Math.max(0.0, Math.min(1.0, depth * 1.4));
+
+    let dx = 0, dy = 0, dz = 0;
+
+    // Wave 1
+    const d1x = 0.78, d1z = 0.62, k1 = 0.42 * freqScale;
+    const a1 = 0.22 * ampScale * shoalSteep * damp;
+    const p1 = (wx * d1x + wz * d1z) * k1 - t * 2.1 * Math.sqrt(shallowFactor * freqScale);
+    const c1 = Math.cos(p1), s1 = Math.sin(p1);
+    dx += d1x * a1 * c1 * 0.85;
+    dz += d1z * a1 * c1 * 0.85;
+    dy += a1 * s1;
+
+    // Wave 2
+    const d2x = 0.45, d2z = -0.89, k2 = 0.78 * freqScale;
+    const a2 = 0.11 * ampScale * damp;
+    const p2 = (wx * d2x + wz * d2z) * k2 - t * 2.8 * Math.sqrt(shallowFactor * freqScale);
+    const c2 = Math.cos(p2), s2 = Math.sin(p2);
+    dx += d2x * a2 * c2 * 0.75;
+    dz += d2z * a2 * c2 * 0.75;
+    dy += a2 * s2;
+
+    // Wave 3
+    const d3x = -0.65, d3z = 0.76, k3 = 1.45 * freqScale;
+    const a3 = 0.055 * ampScale * damp;
+    const p3 = (wx * d3x + wz * d3z) * k3 - t * 3.7;
+    const c3 = Math.cos(p3), s3 = Math.sin(p3);
+    dx += d3x * a3 * c3 * 0.65;
+    dz += d3z * a3 * c3 * 0.65;
+    dy += a3 * s3;
+
+    out[0] = dx; out[1] = dy; out[2] = dz;
+  }
+
+  const tmpDisp = new Float32Array(3);
+  function evalOceanHeightOnly(wx, wz, t, useFFT, useGerstner) {
+    const bed = getBathymetry(wx, wz);
+    const depth = Math.max(0.0, -bed);
+    const totalAmp = params.waveScale;
+    let h = 0;
+    if (useFFT) {
+      h += sampleFFTBilinear(fftHeight, wx, wz) * totalAmp * params.fftGain * Math.min(1.0, depth * 0.6 + 0.15);
+    }
+    if (useGerstner) {
+      evalGerstnerDisp3D(wx, wz, t, totalAmp * params.gerstnerAmp, params.gerstnerFreq, params.shoaling, depth, tmpDisp);
+      h += tmpDisp[1];
+    }
+    h += sampleRipple(wx, wz);
+    return h;
+  }
+
+  // =========================================================================
+  // 4. Static Meshes: Radial LOD Ocean Grid, Island Mesh, Boat Mesh
+  // =========================================================================
+  const RINGS = 44;
+  const SECTORS = 60;
+  const oceanVertCount = RINGS * SECTORS;
+  const oceanBaseR = new Float32Array(oceanVertCount);
+  const oceanCosT = new Float32Array(oceanVertCount);
+  const oceanSinT = new Float32Array(oceanVertCount);
+
+  for (let r = 0; r < RINGS; r++) {
+    const t = r / (RINGS - 1);
+    const radius = 0.45 + 87.55 * Math.pow(t, 2.35);
+    for (let s = 0; s < SECTORS; s++) {
+      const theta = (s / SECTORS) * Math.PI * 2.0;
+      const idx = r * SECTORS + s;
+      oceanBaseR[idx] = radius;
+      oceanCosT[idx] = Math.cos(theta);
+      oceanSinT[idx] = Math.sin(theta);
+    }
+  }
+
+  const ovWX = new Float32Array(oceanVertCount);
+  const ovWY = new Float32Array(oceanVertCount);
+  const ovWZ = new Float32Array(oceanVertCount);
+  const ovOrigX = new Float32Array(oceanVertCount);
+  const ovOrigZ = new Float32Array(oceanVertCount);
+  const ovDepth = new Float32Array(oceanVertCount);
+  const ovFoam = new Float32Array(oceanVertCount);
+  const ovCX = new Float32Array(oceanVertCount);
+  const ovCY = new Float32Array(oceanVertCount);
+  const ovCZ = new Float32Array(oceanVertCount);
+
+  const ISL_N = 32;
+  const islVerts = [];
+  const islTris = [];
+  {
+    const minX = -15.5, maxX = 2.5;
+    const minZ = 2.0, maxZ = 20.0;
+    for (let z = 0; z < ISL_N; z++) {
+      const wz = minZ + (z / (ISL_N - 1)) * (maxZ - minZ);
+      for (let x = 0; x < ISL_N; x++) {
+        const wx = minX + (x / (ISL_N - 1)) * (maxX - minX);
+        const wy = getBathymetry(wx, wz);
+        islVerts.push({ wx, wy, wz, nx: 0, ny: 1, nz: 0, cx: 0, cy: 0, cz: 0 });
+      }
+    }
+    const eps = 0.15;
+    for (const v of islVerts) {
+      const nx = getBathymetry(v.wx - eps, v.wz) - getBathymetry(v.wx + eps, v.wz);
+      const ny = 2.0 * eps;
+      const nz = getBathymetry(v.wx, v.wz - eps) - getBathymetry(v.wx, v.wz + eps);
+      const nl = Math.hypot(nx, ny, nz);
+      v.nx = nx / nl; v.ny = ny / nl; v.nz = nz / nl;
+    }
+    for (let z = 0; z < ISL_N - 1; z++) {
+      for (let x = 0; x < ISL_N - 1; x++) {
+        const i0 = z * ISL_N + x;
+        const i1 = i0 + 1;
+        const i2 = i0 + ISL_N;
+        const i3 = i2 + 1;
+        if (islVerts[i0].wy < -0.6 && islVerts[i1].wy < -0.6 &&
+            islVerts[i2].wy < -0.6 && islVerts[i3].wy < -0.6) continue;
+        islTris.push([i0, i2, i1]);
+        islTris.push([i1, i2, i3]);
+      }
+    }
+  }
+
+  const boatLocalVerts = [
+    { x:  0.00, y:  0.12, z:  0.85, r: 230, g: 70, b: 60 },
+    { x: -0.32, y:  0.12, z:  0.20, r: 230, g: 70, b: 60 },
+    { x:  0.32, y:  0.12, z:  0.20, r: 230, g: 70, b: 60 },
+    { x: -0.30, y:  0.11, z: -0.70, r: 220, g: 65, b: 55 },
+    { x:  0.30, y:  0.11, z: -0.70, r: 220, g: 65, b: 55 },
+    { x:  0.00, y: -0.14, z:  0.15, r: 165, g: 38, b: 42 },
+    { x:  0.00, y: -0.13, z: -0.65, r: 165, g: 38, b: 42 },
+    { x:  0.00, y:  0.27, z:  0.18, r: 245, g: 248, b: 252 },
+    { x: -0.17, y:  0.25, z: -0.32, r: 235, g: 240, b: 248 },
+    { x:  0.17, y:  0.25, z: -0.32, r: 235, g: 240, b: 248 },
+    { x: -0.19, y:  0.12, z:  0.15, r: 225, g: 232, b: 242 },
+    { x:  0.19, y:  0.12, z:  0.15, r: 225, g: 232, b: 242 },
+    { x: -0.19, y:  0.12, z: -0.35, r: 220, g: 228, b: 238 },
+    { x:  0.19, y:  0.12, z: -0.35, r: 220, g: 228, b: 238 },
+  ];
+  const boatTris = [
+    [0, 1, 2], [1, 3, 2], [2, 3, 4],
+    [0, 5, 1], [1, 5, 3], [3, 5, 6],
+    [0, 2, 5], [2, 4, 5], [4, 6, 5],
+    [3, 6, 4],
+    [7, 10, 11], [7, 12, 10], [7, 8, 12],
+    [7, 11, 13], [7, 13, 9], [7, 9, 8], [8, 9, 13], [8, 13, 12]
+  ];
+  const boatWorldVerts = boatLocalVerts.map(() => ({ wx: 0, wy: 0, wz: 0, cx: 0, cy: 0, cz: 0 }));
+
+  // =========================================================================
+  // 5. Camera & Controls
+  // =========================================================================
+  let camYaw = 0.35;
+  let camPitch = 0.34;
+  let camDist = 11.5;
+  let isDragging = false;
+  let lastX = 0, lastY = 0, dragMoved = false;
+
+  const boat = { x: 2.5, z: 5.5, angle: 0, y: 0, pitch: 0, roll: 0 };
+
+  document.getElementById('btnReset').onclick = () => {
+    camYaw = 0.35; camPitch = 0.34; camDist = 11.5;
+    for (const [key, defVal] of paramDefs) setParamValue(key, defVal);
+    chkFFT.checked = true;
+    chkGerstner.checked = true;
+    chkDetail.checked = true;
+    chkRefract.checked = true;
+    chkReflect.checked = true;
+    chkFoam.checked = true;
+    chkWire.checked = false;
+  };
+  document.getElementById('btnRipple').onclick = () => {
+    addRipple(boat.x + (Math.random() - 0.5) * 4, boat.z + (Math.random() - 0.5) * 4, 0.55);
+  };
+
+  canvas.addEventListener('pointerdown', (e) => {
+    isDragging = true; dragMoved = false;
+    lastX = e.clientX; lastY = e.clientY;
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!isDragging) return;
+    const dx = e.clientX - lastX;
+    const dy = e.clientY - lastY;
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) dragMoved = true;
+    camYaw -= dx * 0.008;
+    camPitch = Math.max(0.08, Math.min(1.15, camPitch + dy * 0.007));
+    lastX = e.clientX; lastY = e.clientY;
+  });
+  canvas.addEventListener('pointerup', (e) => {
+    isDragging = false;
+    if (!dragMoved) {
+      const rect = canvas.getBoundingClientRect();
+      const px = ((e.clientX - rect.left) / rect.width) * W;
+      const py = ((e.clientY - rect.top) / rect.height) * H;
+      spawnRippleAtPixel(px, py);
+    }
+  });
+
+  let camPosX = 0, camPosY = 0, camPosZ = 0;
+  let fwdX = 0, fwdY = 0, fwdZ = 0;
+  let rightX = 0, rightY = 0, rightZ = 0;
+  let upX = 0, upY = 0, upZ = 0;
+  const FOV = 1.15;
+  const aspect = W / H;
+  const projScaleX = (W * 0.5) / (aspect * FOV);
+  const projScaleY = (H * 0.5) / FOV;
+  const NEAR_Z = 0.25;
+
+  function updateCameraBasis() {
+    const targetX = -1.5, targetY = 0.2, targetZ = 7.5;
+    camPosX = targetX + Math.sin(camYaw) * Math.cos(camPitch) * camDist;
+    camPosY = targetY + Math.sin(camPitch) * camDist;
+    camPosZ = targetZ - Math.cos(camYaw) * Math.cos(camPitch) * camDist;
+
+    let fx = targetX - camPosX;
+    let fy = targetY - camPosY;
+    let fz = targetZ - camPosZ;
+    const fLen = Math.hypot(fx, fy, fz);
+    fwdX = fx / fLen; fwdY = fy / fLen; fwdZ = fz / fLen;
+
+    let rx = fwdZ, rz = -fwdX;
+    const rLen = Math.hypot(rx, rz);
+    rightX = rx / rLen; rightY = 0; rightZ = rz / rLen;
+
+    upX = fwdY * rightZ - fwdZ * rightY;
+    upY = fwdZ * rightX - fwdX * rightZ;
+    upZ = fwdX * rightY - fwdY * rightX;
+  }
+
+  function spawnRippleAtPixel(px, py) {
+    updateCameraBasis();
+    const ndcX = (px / W - 0.5) * aspect * FOV;
+    const ndcY = (0.5 - py / H) * FOV;
+    let dx = fwdX + rightX * ndcX + upX * ndcY;
+    let dy = fwdY + rightY * ndcX + upY * ndcY;
+    let dz = fwdZ + rightZ * ndcX + upZ * ndcY;
+    const len = Math.hypot(dx, dy, dz);
+    dx /= len; dy /= len; dz /= len;
+    if (dy < -0.01) {
+      const dist = -camPosY / dy;
+      if (dist > 0 && dist < 40) addRipple(camPosX + dx * dist, camPosZ + dz * dist, 0.65);
+    }
+  }
+
+  // =========================================================================
+  // 6. Sky & Pixel Shader Helpers
+  // =========================================================================
+  function packRGB(r, g, b) {
+    r = r < 0 ? 0 : (r > 255 ? 255 : r | 0);
+    g = g < 0 ? 0 : (g > 255 ? 255 : g | 0);
+    b = b < 0 ? 0 : (b > 255 ? 255 : b | 0);
+    return (255 << 24) | (b << 16) | (g << 8) | r;
+  }
+
+  function getSkyColor(dx, dy, dz, sunX, sunY, sunZ) {
+    const t = Math.max(0, Math.min(1, dy));
+    // Warm sunset tint when sun elevation is low
+    const warm = Math.max(0, Math.min(1, (0.25 - sunY) * 4.5));
+    const horizonR = 195 + warm * 45;
+    const horizonG = 225 - warm * 65;
+    const horizonB = 248 - warm * 120;
+    const zenithR = 42 + warm * 22;
+    const zenithG = 108 - warm * 45;
+    const zenithB = 198 - warm * 75;
+    const invT = Math.pow(1.0 - t, 1.8);
+
+    let r = zenithR + (horizonR - zenithR) * invT;
+    let g = zenithG + (horizonG - zenithG) * invT;
+    let b = zenithB + (horizonB - zenithB) * invT;
+
+    const sunDot = Math.max(0, dx * sunX + dy * sunY + dz * sunZ);
+    const mie = Math.pow(sunDot, 12.0) * 65.0 + Math.pow(sunDot, 280.0) * 240.0;
+    r += mie * 1.15; g += mie * (0.98 - warm * 0.25); b += mie * (0.72 - warm * 0.35);
+
+    if (dy > 0.03) {
+      const cu = dx / (dy + 0.15) * 1.8;
+      const cv = dz / (dy + 0.15) * 1.8;
+      const cloud = Math.sin(cu * 1.3 + Math.cos(cv * 1.1)) * Math.cos(cv * 1.7 - cu * 0.6);
+      if (cloud > 0.25) {
+        const cAlpha = Math.min(0.45, (cloud - 0.25) * 0.7) * Math.min(1, dy * 6);
+        const cr = 250, cg = 248 - warm * 65, cb = 245 - warm * 105;
+        r = r * (1 - cAlpha) + cr * cAlpha;
+        g = g * (1 - cAlpha) + cg * cAlpha;
+        b = b * (1 - cAlpha) + cb * cAlpha;
+      }
+    }
+    return [r, g, b];
+  }
+
+  function evalCaustics(wx, wz, t) {
+    const u1 = wx * 1.8 + t * 0.9;
+    const v1 = wz * 1.8 - t * 0.7;
+    const w1 = Math.sin(u1 + Math.sin(v1 * 1.3)) + Math.cos(v1 + Math.cos(u1 * 1.2));
+    const u2 = wx * 2.7 - t * 1.1;
+    const v2 = wz * 2.7 + t * 0.8;
+    const w2 = Math.sin(u2 * 1.1 - Math.cos(v2)) + Math.cos(v2 * 1.2 + Math.sin(u2));
+    const ridge = 1.0 - Math.min(1.0, Math.abs(w1 + w2) * 0.45);
+    return Math.pow(ridge, 3.0);
+  }
+
+  // =========================================================================
+  // 7. Software Triangle Clipper & Perspective-Correct Rasterizer
+  // =========================================================================
+  const clipBufA = Array.from({ length: 8 }, () => ({}));
+  const clipBufB = Array.from({ length: 8 }, () => ({}));
+
+  function copyVert(dst, src) {
+    dst.cx = src.cx; dst.cy = src.cy; dst.cz = src.cz;
+    dst.wx = src.wx; dst.wy = src.wy; dst.wz = src.wz;
+    dst.ox = src.ox; dst.oz = src.oz;
+    dst.depth = src.depth; dst.foam = src.foam;
+    dst.nx = src.nx; dst.ny = src.ny; dst.nz = src.nz;
+    dst.r = src.r; dst.g = src.g; dst.b = src.b;
+  }
+
+  function lerpVert(dst, a, b, t) {
+    dst.cx = a.cx + (b.cx - a.cx) * t;
+    dst.cy = a.cy + (b.cy - a.cy) * t;
+    dst.cz = a.cz + (b.cz - a.cz) * t;
+    dst.wx = a.wx + (b.wx - a.wx) * t;
+    dst.wy = a.wy + (b.wy - a.wy) * t;
+    dst.wz = a.wz + (b.wz - a.wz) * t;
+    dst.ox = a.ox + (b.ox - a.ox) * t;
+    dst.oz = a.oz + (b.oz - a.oz) * t;
+    dst.depth = a.depth + (b.depth - a.depth) * t;
+    dst.foam = a.foam + (b.foam - a.foam) * t;
+    dst.nx = a.nx + (b.nx - a.nx) * t;
+    dst.ny = a.ny + (b.ny - a.ny) * t;
+    dst.nz = a.nz + (b.nz - a.nz) * t;
+    dst.r = a.r + (b.r - a.r) * t;
+    dst.g = a.g + (b.g - a.g) * t;
+    dst.b = a.b + (b.b - a.b) * t;
+  }
+
+  function clipNearPlane(v0, v1, v2) {
+    copyVert(clipBufA[0], v0);
+    copyVert(clipBufA[1], v1);
+    copyVert(clipBufA[2], v2);
+    let count = 0;
+    for (let i = 0; i < 3; i++) {
+      const curr = clipBufA[i];
+      const next = clipBufA[(i + 1) % 3];
+      const currIn = curr.cz >= NEAR_Z;
+      const nextIn = next.cz >= NEAR_Z;
+      if (currIn) copyVert(clipBufB[count++], curr);
+      if (currIn !== nextIn) {
+        const t = (NEAR_Z - curr.cz) / (next.cz - curr.cz);
+        lerpVert(clipBufB[count++], curr, next, t);
+      }
+    }
+    return count;
+  }
+
+  function drawLine(x0, y0, x1, y1, col) {
+    x0 = Math.round(x0); y0 = Math.round(y0);
+    x1 = Math.round(x1); y1 = Math.round(y1);
+    const dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+    const dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+    let err = dx + dy;
+    while (true) {
+      if (x0 >= 0 && x0 < W && y0 >= 0 && y0 < H) buf32[y0 * W + x0] = col;
+      if (x0 === x1 && y0 === y1) break;
+      const e2 = 2 * err;
+      if (e2 >= dy) { err += dy; x0 += sx; }
+      if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+  }
+
+  function rasterizeTriangle(a, b, c, pixelShader, wireframe) {
+    const invZa = 1.0 / a.cz;
+    const invZb = 1.0 / b.cz;
+    const invZc = 1.0 / c.cz;
+
+    const sxa = a.cx * invZa * projScaleX + W * 0.5;
+    const sya = -a.cy * invZa * projScaleY + H * 0.5;
+    const sxb = b.cx * invZb * projScaleX + W * 0.5;
+    const syb = -b.cy * invZb * projScaleY + H * 0.5;
+    const sxc = c.cx * invZc * projScaleX + W * 0.5;
+    const syc = -c.cy * invZc * projScaleY + H * 0.5;
+
+    const area = (sxb - sxa) * (syc - sya) - (syb - sya) * (sxc - sxa);
+    if (Math.abs(area) < 1e-4 || area < 0) return false;
+
+    const minX = Math.max(0, Math.floor(Math.min(sxa, sxb, sxc)));
+    const maxX = Math.min(W - 1, Math.ceil(Math.max(sxa, sxb, sxc)) - 1);
+    const minY = Math.max(0, Math.floor(Math.min(sya, syb, syc)));
+    const maxY = Math.min(H - 1, Math.ceil(Math.max(sya, syb, syc)) - 1);
+    if (minX > maxX || minY > maxY) return false;
+
+    const invArea = 1.0 / area;
+    const dW0dx = (syb - syc) * invArea;
+    const dW0dy = (sxc - sxb) * invArea;
+    const dW1dx = (syc - sya) * invArea;
+    const dW1dy = (sxa - sxc) * invArea;
+
+    const startX = minX + 0.5;
+    const startY = minY + 0.5;
+    let w0Row = ((sxb - startX) * (syc - startY) - (syb - startY) * (sxc - startX)) * invArea;
+    let w1Row = ((sxc - startX) * (sya - startY) - (syc - startY) * (sxa - startX)) * invArea;
+
+    const wxZa = a.wx * invZa, wyZa = a.wy * invZa, wzZa = a.wz * invZa;
+    const wxZb = b.wx * invZb, wyZb = b.wy * invZb, wzZb = b.wz * invZb;
+    const wxZc = c.wx * invZc, wyZc = c.wy * invZc, wzZc = c.wz * invZc;
+
+    const oxZa = a.ox * invZa, ozZa = a.oz * invZa;
+    const oxZb = b.ox * invZb, ozZb = b.oz * invZb;
+    const oxZc = c.ox * invZc, ozZc = c.oz * invZc;
+
+    const depZa = a.depth * invZa, depZb = b.depth * invZb, depZc = c.depth * invZc;
+    const fomZa = a.foam * invZa, fomZb = b.foam * invZb, fomZc = c.foam * invZc;
+
+    const nxZa = a.nx * invZa, nyZa = a.ny * invZa, nzZa = a.nz * invZa;
+    const nxZb = b.nx * invZb, nyZb = b.ny * invZb, nzZb = b.nz * invZb;
+    const nxZc = c.nx * invZc, nyZc = c.ny * invZc, nzZc = c.nz * invZc;
+
+    const rZa = a.r * invZa, gZa = a.g * invZa, bZa = a.b * invZa;
+    const rZb = b.r * invZb, gZb = b.g * invZb, bZb = b.b * invZb;
+    const rZc = c.r * invZc, gZc = c.g * invZc, bZc = c.b * invZc;
+
+    for (let py = minY; py <= maxY; py++) {
+      let w0 = w0Row;
+      let w1 = w1Row;
+      const rowOffset = py * W;
+
+      for (let px = minX; px <= maxX; px++) {
+        const w2 = 1.0 - w0 - w1;
+        if (w0 >= -1e-5 && w1 >= -1e-5 && w2 >= -1e-5) {
+          const invZ = w0 * invZa + w1 * invZb + w2 * invZc;
+          const cz = 1.0 / invZ;
+          const pIdx = rowOffset + px;
+
+          if (cz < zBuffer[pIdx]) {
+            zBuffer[pIdx] = cz;
+            const wx = (w0 * wxZa + w1 * wxZb + w2 * wxZc) * cz;
+            const wy = (w0 * wyZa + w1 * wyZb + w2 * wyZc) * cz;
+            const wz = (w0 * wzZa + w1 * wzZb + w2 * wzZc) * cz;
+            const ox = (w0 * oxZa + w1 * oxZb + w2 * oxZc) * cz;
+            const oz = (w0 * ozZa + w1 * ozZb + w2 * ozZc) * cz;
+            const depth = (w0 * depZa + w1 * depZb + w2 * depZc) * cz;
+            const foam = (w0 * fomZa + w1 * fomZb + w2 * fomZc) * cz;
+            const nx = (w0 * nxZa + w1 * nxZb + w2 * nxZc) * cz;
+            const ny = (w0 * nyZa + w1 * nyZb + w2 * nyZc) * cz;
+            const nz = (w0 * nzZa + w1 * nzZb + w2 * nzZc) * cz;
+            const vr = (w0 * rZa + w1 * rZb + w2 * rZc) * cz;
+            const vg = (w0 * gZa + w1 * gZb + w2 * gZc) * cz;
+            const vb = (w0 * bZa + w1 * bZb + w2 * bZc) * cz;
+
+            buf32[pIdx] = pixelShader(wx, wy, wz, ox, oz, depth, foam, nx, ny, nz, vr, vg, vb, cz);
+          }
+        }
+        w0 += dW0dx;
+        w1 += dW1dx;
+      }
+      w0Row += dW0dy;
+      w1Row += dW1dy;
+    }
+
+    if (wireframe) {
+      const wireCol = packRGB(56, 220, 255);
+      drawLine(sxa, sya, sxb, syb, wireCol);
+      drawLine(sxb, syb, sxc, syc, wireCol);
+      drawLine(sxc, syc, sxa, sya, wireCol);
+    }
+    return true;
+  }
+
+  function submitTriangle(v0, v1, v2, pixelShader, wireframe) {
+    const nClip = clipNearPlane(v0, v1, v2);
+    if (nClip < 3) return 0;
+    let drawn = 0;
+    if (rasterizeTriangle(clipBufB[0], clipBufB[1], clipBufB[2], pixelShader, wireframe)) drawn++;
+    if (nClip === 4) {
+      if (rasterizeTriangle(clipBufB[0], clipBufB[2], clipBufB[3], pixelShader, wireframe)) drawn++;
+    }
+    return drawn;
+  }
+
+  const tv0 = {}, tv1 = {}, tv2 = {};
+
+  // =========================================================================
+  // 8. Main Frame Loop
+  // =========================================================================
+  let simTime = 0;
+  let lastFrameTime = performance.now();
+  let frameCounter = 0;
+  let fpsTimer = 0;
+  let currentFPS = 60;
+  let wakeTimer = 0;
+
+  function renderFrame(now) {
+    const dt = Math.min(0.05, (now - lastFrameTime) * 0.001);
+    lastFrameTime = now;
+    simTime += dt;
+    const tStart = performance.now();
+
+    const useFFT = chkFFT.checked;
+    const useGerstner = chkGerstner.checked;
+    const useDetail = chkDetail.checked;
+    const useRefract = chkRefract.checked;
+    const useReflect = chkReflect.checked;
+    const useFoam = chkFoam.checked;
+    const wireframe = chkWire.checked;
+
+    if (useFFT) updateFFTOcean(simTime, params.choppiness);
+    stepRipples(params.ripDecay);
+
+    // Boat trajectory & 4-point buoyancy
+    boat.angle += dt * 0.42;
+    boat.x = 1.8 + Math.cos(boat.angle) * 4.2;
+    boat.z = 5.5 + Math.sin(boat.angle) * 3.4;
+
+    wakeTimer += dt;
+    if (wakeTimer > 0.06) {
+      wakeTimer = 0;
+      addRipple(boat.x, boat.z, 0.24);
+    }
+
+    const fwdBoatX = -Math.sin(boat.angle);
+    const fwdBoatZ = Math.cos(boat.angle);
+    const rgtBoatX = fwdBoatZ;
+    const rgtBoatZ = -fwdBoatX;
+
+    const hBow = evalOceanHeightOnly(boat.x + fwdBoatX * 0.7, boat.z + fwdBoatZ * 0.7, simTime, useFFT, useGerstner);
+    const hStern = evalOceanHeightOnly(boat.x - fwdBoatX * 0.7, boat.z - fwdBoatZ * 0.7, simTime, useFFT, useGerstner);
+    const hPort = evalOceanHeightOnly(boat.x - rgtBoatX * 0.35, boat.z - rgtBoatZ * 0.35, simTime, useFFT, useGerstner);
+    const hStarboard = evalOceanHeightOnly(boat.x + rgtBoatX * 0.35, boat.z + rgtBoatZ * 0.35, simTime, useFFT, useGerstner);
+
+    boat.y = (hBow + hStern + hPort + hStarboard) * 0.25 + 0.06;
+    boat.pitch = (hBow - hStern) * 0.65;
+    boat.roll = (hStarboard - hPort) * 1.1;
+
+    const sunY = Math.sin(params.sunElev);
+    const sunHoriz = Math.cos(params.sunElev);
+    const sunX = Math.cos(params.sunAz) * sunHoriz;
+    const sunZ = Math.sin(params.sunAz) * sunHoriz;
+
+    updateCameraBasis();
+
+    // Pass 0: Sky + Z-Buffer clear
+    zBuffer.fill(1e9);
+    for (let py = 0; py < H; py++) {
+      const ndcY = (0.5 - (py + 0.5) / H) * FOV;
+      const rowOffset = py * W;
+      for (let px = 0; px < W; px++) {
+        const ndcX = ((px + 0.5) / W - 0.5) * aspect * FOV;
+        let dx = fwdX + rightX * ndcX + upX * ndcY;
+        let dy = fwdY + rightY * ndcX + upY * ndcY;
+        let dz = fwdZ + rightZ * ndcX + upZ * ndcY;
+        const invL = 1.0 / Math.hypot(dx, dy, dz);
+        const [sr, sg, sb] = getSkyColor(dx * invL, Math.max(0, dy * invL), dz * invL, sunX, sunY, sunZ);
+        buf32[rowOffset + px] = packRGB(sr, sg, sb);
+      }
+    }
+
+    let drawnTriangles = 0;
+
+    // Pass 1: Island Mesh
+    function islandPixelShader(wx, wy, wz, ox, oz, depth, foam, nx, ny, nz, vr, vg, vb, cz) {
+      const nl = 1.0 / Math.hypot(nx, ny, nz);
+      nx *= nl; ny *= nl; nz *= nl;
+      const ndotl = Math.max(0.22, nx * sunX + ny * sunY + nz * sunZ);
+
+      let lr, lg, lb;
+      if (wy < 0.0) { lr = 135; lg = 122; lb = 92; }
+      else if (wy < 0.18) { lr = 148; lg = 132; lb = 98; }
+      else if (wy < 0.55) { lr = 216; lg = 198; lb = 148; }
+      else { lr = 78; lg = 136; lb = 68; }
+
+      const fog = Math.min(1.0, Math.max(0.0, (cz - 25.0) / 70.0));
+      let vx = wx - camPosX, vy = wy - camPosY, vz = wz - camPosZ;
+      const vl = 1.0 / Math.hypot(vx, vy, vz);
+      const [skyR, skyG, skyB] = getSkyColor(vx * vl, 0.02, vz * vl, sunX, sunY, sunZ);
+      return packRGB(
+        lr * ndotl * (1 - fog) + skyR * fog,
+        lg * ndotl * (1 - fog) + skyG * fog,
+        lb * ndotl * (1 - fog) + skyB * fog
+      );
+    }
+
+    for (const v of islVerts) {
+      const rx = v.wx - camPosX, ry = v.wy - camPosY, rz = v.wz - camPosZ;
+      v.cx = rx * rightX + ry * rightY + rz * rightZ;
+      v.cy = rx * upX + ry * upY + rz * upZ;
+      v.cz = rx * fwdX + ry * fwdY + rz * fwdZ;
+    }
+
+    for (const [i0, i1, i2] of islTris) {
+      const a = islVerts[i0], b = islVerts[i1], c = islVerts[i2];
+      if (a.cz < NEAR_Z && b.cz < NEAR_Z && c.cz < NEAR_Z) continue;
+      Object.assign(tv0, a, { ox: 0, oz: 0, depth: 0, foam: 0, r: 0, g: 0, b: 0 });
+      Object.assign(tv1, b, { ox: 0, oz: 0, depth: 0, foam: 0, r: 0, g: 0, b: 0 });
+      Object.assign(tv2, c, { ox: 0, oz: 0, depth: 0, foam: 0, r: 0, g: 0, b: 0 });
+      drawnTriangles += submitTriangle(tv0, tv1, tv2, islandPixelShader, false);
+    }
+
+    // Pass 2: Boat Mesh
+    function boatPixelShader(wx, wy, wz, ox, oz, depth, foam, nx, ny, nz, vr, vg, vb, cz) {
+      return packRGB(vr, vg, vb);
+    }
+
+    for (let i = 0; i < boatLocalVerts.length; i++) {
+      const lv = boatLocalVerts[i];
+      const wv = boatWorldVerts[i];
+      const ly = lv.y + lv.z * boat.pitch + lv.x * boat.roll;
+      wv.wx = boat.x + lv.z * fwdBoatX + lv.x * rgtBoatX;
+      wv.wy = boat.y + ly;
+      wv.wz = boat.z + lv.z * fwdBoatZ + lv.x * rgtBoatZ;
+
+      const rx = wv.wx - camPosX, ry = wv.wy - camPosY, rz = wv.wz - camPosZ;
+      wv.cx = rx * rightX + ry * rightY + rz * rightZ;
+      wv.cy = rx * upX + ry * upY + rz * upZ;
+      wv.cz = rx * fwdX + ry * fwdY + rz * fwdZ;
+    }
+
+    for (const [i0, i1, i2] of boatTris) {
+      const a = boatWorldVerts[i0], b = boatWorldVerts[i1], c = boatWorldVerts[i2];
+      if (a.cz < NEAR_Z && b.cz < NEAR_Z && c.cz < NEAR_Z) continue;
+      const e1x = b.wx - a.wx, e1y = b.wy - a.wy, e1z = b.wz - a.wz;
+      const e2x = c.wx - a.wx, e2y = c.wy - a.wy, e2z = c.wz - a.wz;
+      let nx = e1y * e2z - e1z * e2y;
+      let ny = e1z * e2x - e1x * e2z;
+      let nz = e1x * e2y - e1y * e2x;
+      const nl = Math.hypot(nx, ny, nz) || 1;
+      nx /= nl; ny /= nl; nz /= nl;
+      const ndotl = Math.max(0.28, nx * sunX + ny * sunY + nz * sunZ);
+
+      const la = boatLocalVerts[i0], lb = boatLocalVerts[i1], lc = boatLocalVerts[i2];
+      Object.assign(tv0, a, { ox: 0, oz: 0, depth: 0, foam: 0, nx: 0, ny: 1, nz: 0, r: la.r * ndotl, g: la.g * ndotl, b: la.b * ndotl });
+      Object.assign(tv1, b, { ox: 0, oz: 0, depth: 0, foam: 0, nx: 0, ny: 1, nz: 0, r: lb.r * ndotl, g: lb.g * ndotl, b: lb.b * ndotl });
+      Object.assign(tv2, c, { ox: 0, oz: 0, depth: 0, foam: 0, nx: 0, ny: 1, nz: 0, r: lc.r * ndotl, g: lc.g * ndotl, b: lc.b * ndotl });
+      drawnTriangles += submitTriangle(tv0, tv1, tv2, boatPixelShader, false);
+    }
+
+    // Pass 3: Ocean Vertex Displacement
+    const gridCenterX = camPosX + fwdX * 6.0;
+    const gridCenterZ = camPosZ + fwdZ * 6.0;
+    const totalAmp = params.waveScale;
+
+    for (let i = 0; i < oceanVertCount; i++) {
+      const r = oceanBaseR[i];
+      const baseX = gridCenterX + oceanCosT[i] * r;
+      const baseZ = gridCenterZ + oceanSinT[i] * r;
+
+      const bed = getBathymetry(baseX, baseZ);
+      const depth = Math.max(0.0, -bed);
+      const shoreAtten = Math.min(1.0, depth * 0.65 + 0.12);
+
+      let dispX = 0, dispY = 0, dispZ = 0;
+      let foamVal = 0;
+
+      if (useFFT) {
+        const fg = totalAmp * params.fftGain * shoreAtten;
+        dispX += sampleFFTBilinear(fftDispX, baseX, baseZ) * fg;
+        dispZ += sampleFFTBilinear(fftDispZ, baseX, baseZ) * fg;
+        dispY += sampleFFTBilinear(fftHeight, baseX, baseZ) * fg;
+
+        if (useFoam) {
+          const jVal = sampleFFTBilinear(fftJacobian, baseX, baseZ);
+          if (jVal < 0.72) foamVal += Math.min(1.0, (0.72 - jVal) * 2.2) * params.foamAmt;
+        }
+      }
+
+      if (useGerstner) {
+        evalGerstnerDisp3D(baseX, baseZ, simTime, totalAmp * params.gerstnerAmp, params.gerstnerFreq, params.shoaling, depth, tmpDisp);
+        dispX += tmpDisp[0];
+        dispY += tmpDisp[1];
+        dispZ += tmpDisp[2];
+      }
+
+      dispY += sampleRipple(baseX, baseZ);
+
+      const wx = baseX + dispX;
+      const wy = dispY;
+      const wz = baseZ + dispZ;
+
+      ovOrigX[i] = baseX;
+      ovOrigZ[i] = baseZ;
+      ovWX[i] = wx;
+      ovWY[i] = wy;
+      ovWZ[i] = wz;
+      ovDepth[i] = Math.max(0.01, wy - getBathymetry(wx, wz));
+      ovFoam[i] = foamVal;
+
+      const rx = wx - camPosX, ry = wy - camPosY, rz = wz - camPosZ;
+      ovCX[i] = rx * rightX + ry * rightY + rz * rightZ;
+      ovCY[i] = rx * upX + ry * upY + rz * upZ;
+      ovCZ[i] = rx * fwdX + ry * fwdY + rz * fwdZ;
+    }
+
+    // Ocean Pixel Shader
+    function oceanPixelShader(wx, wy, wz, ox, oz, waterDepth, vertFoam, _nx, _ny, _nz, _r, _g, _b, cz) {
+      let dx = wx - camPosX;
+      let dy = wy - camPosY;
+      let dz = wz - camPosZ;
+      const dist = Math.hypot(dx, dy, dz);
+      const invDist = 1.0 / dist;
+      dx *= invDist; dy *= invDist; dz *= invDist;
+
+      let gradX = 0, gradZ = 0;
+
+      if (useFFT) {
+        const shoreAtten = Math.min(1.0, waterDepth * 0.65 + 0.12);
+        const fg = totalAmp * params.fftGain * shoreAtten;
+        gradX += sampleFFTBilinear(fftGradX, ox, oz) * fg;
+        gradZ += sampleFFTBilinear(fftGradZ, ox, oz) * fg;
+      }
+
+      if (useGerstner) {
+        const shallowFactor = Math.max(0.15, Math.min(1.0, waterDepth / 3.5));
+        const shoalSteep = 1.0 + (1.0 - shallowFactor) * 0.65 * params.shoaling;
+        const damp = Math.max(0.0, Math.min(1.0, waterDepth * 1.4));
+        const gAmp = totalAmp * params.gerstnerAmp;
+        const gFreq = params.gerstnerFreq;
+
+        const k1 = 0.42 * gFreq;
+        const p1 = (ox * 0.78 + oz * 0.62) * k1 - simTime * 2.1 * Math.sqrt(shallowFactor * gFreq);
+        const c1 = Math.cos(p1) * k1 * 0.22 * gAmp * shoalSteep * damp;
+        gradX += 0.78 * c1;
+        gradZ += 0.62 * c1;
+
+        const k2 = 0.78 * gFreq;
+        const p2 = (ox * 0.45 - oz * 0.89) * k2 - simTime * 2.8 * Math.sqrt(shallowFactor * gFreq);
+        const c2 = Math.cos(p2) * k2 * 0.11 * gAmp * damp;
+        gradX += 0.45 * c2;
+        gradZ += -0.89 * c2;
+      }
+
+      if (useDetail && dist < 38.0) {
+        const detailFade = 1.0 - dist / 38.0;
+        const dScale = 0.065 * params.detailAmp * detailFade;
+        const u1 = ox * 4.5 + simTime * 1.4;
+        const v1 = oz * 4.5 - simTime * 1.1;
+        const u2 = ox * 9.2 - simTime * 1.9;
+        const v2 = oz * 9.2 + simTime * 1.6;
+        gradX += (Math.cos(u1 + Math.sin(v1)) + 0.5 * Math.cos(u2)) * dScale;
+        gradZ += (Math.sin(v1 + Math.cos(u1)) + 0.5 * Math.sin(v2)) * dScale;
+      }
+
+      let nx = -gradX;
+      let ny = 1.0;
+      let nz = -gradZ;
+      const invN = 1.0 / Math.hypot(nx, ny, nz);
+      nx *= invN; ny *= invN; nz *= invN;
+
+      const vx = -dx, vy = -dy, vz = -dz;
+      const nDotV = Math.max(0.001, nx * vx + ny * vy + nz * vz);
+
+      const fresnel = useReflect
+        ? Math.min(1.0, params.fresnelBias + (1.0 - params.fresnelBias) * Math.pow(1.0 - nDotV, 5.0))
+        : 0.08;
+
+      let refrR = 12, refrG = 58, refrB = 96;
+      if (useRefract) {
+        const absK = params.absorb;
+        const attR = Math.exp(-waterDepth * 0.85 * absK);
+        const attG = Math.exp(-waterDepth * 0.28 * absK);
+        const attB = Math.exp(-waterDepth * 0.14 * absK);
+
+        const caustics = waterDepth < 3.8
+          ? evalCaustics(wx + nx * 0.4, wz + nz * 0.4, simTime) * Math.exp(-waterDepth * 0.45) * params.caustics
+          : 0;
+        const bedLight = Math.max(0.35, sunY) + caustics * 0.85;
+        const sandR = 205 * bedLight, sandG = 192 * bedLight, sandB = 142 * bedLight;
+        const deepR = 8, deepG = 46, deepB = 82;
+
+        refrR = sandR * attR + deepR * (1.0 - attR);
+        refrG = sandG * attG + deepG * (1.0 - attG);
+        refrB = sandB * attB + deepB * (1.0 - attB);
+
+        const crestHeight = Math.max(0.0, wy);
+        const backSun = Math.max(0.0, dx * sunX + dz * sunZ);
+        const sss = crestHeight * Math.pow(backSun, 2.0) * 1.4 * params.sss;
+        refrR += 18 * sss; refrG += 95 * sss; refrB += 88 * sss;
+      }
+
+      let reflR = 110, reflG = 165, reflB = 220;
+      if (useReflect) {
+        let rx = 2.0 * nDotV * nx - vx;
+        let ry = 2.0 * nDotV * ny - vy;
+        let rz = 2.0 * nDotV * nz - vz;
+        if (ry < 0.01) ry = 0.01;
+        const rLen = Math.hypot(rx, ry, rz);
+        rx /= rLen; ry /= rLen; rz /= rLen;
+
+        [reflR, reflG, reflB] = getSkyColor(rx, ry, rz, sunX, sunY, sunZ);
+
+        if (dist < 28.0 && ry < 0.35) {
+          const testT = 2.2;
+          if (getBathymetry(wx + rx * testT, wz + rz * testT) > wy + ry * testT) {
+            reflR = reflR * 0.45 + 95 * 0.55;
+            reflG = reflG * 0.45 + 115 * 0.55;
+            reflB = reflB * 0.45 + 75 * 0.55;
+          }
+        }
+      }
+
+      let colR = refrR * (1.0 - fresnel) + reflR * fresnel;
+      let colG = refrG * (1.0 - fresnel) + reflG * fresnel;
+      let colB = refrB * (1.0 - fresnel) + reflB * fresnel;
+
+      let hx = sunX + vx, hy = sunY + vy, hz = sunZ + vz;
+      const hLen = Math.hypot(hx, hy, hz);
+      hx /= hLen; hy /= hLen; hz /= hLen;
+      const nDotH = Math.max(0.0, nx * hx + ny * hy + nz * hz);
+      const spec = (Math.pow(nDotH, 160.0) * 320.0 + Math.pow(nDotH, 24.0) * 28.0) * params.specPower;
+      colR += spec * 1.1; colG += spec * 0.98; colB += spec * 0.82;
+
+      if (useFoam) {
+        let foam = vertFoam;
+        if (waterDepth < 0.34) {
+          const shoreWave = Math.sin(waterDepth * 26.0 - simTime * 4.5);
+          const shoreMask = 1.0 - waterDepth / 0.34;
+          if (shoreWave > 0.15) foam += shoreMask * (shoreWave - 0.15) * 1.35 * params.foamAmt;
+        }
+        const bDist = Math.hypot(wx - boat.x, wz - boat.z);
+        if (bDist < 1.1) foam += (1.0 - bDist / 1.1) * 0.65 * params.foamAmt;
+
+        if (foam > 0.02) {
+          const fNoise = 0.65 + 0.35 * Math.sin(ox * 11.0 + Math.cos(oz * 11.0));
+          const fAlpha = Math.min(0.92, foam * fNoise);
+          const fLight = 232 + sunY * 22;
+          colR = colR * (1.0 - fAlpha) + fLight * fAlpha;
+          colG = colG * (1.0 - fAlpha) + (fLight + 2) * fAlpha;
+          colB = colB * (1.0 - fAlpha) + (fLight + 5) * fAlpha;
+        }
+      }
+
+      const fog = Math.min(1.0, Math.max(0.0, (dist - 22.0) / 72.0));
+      if (fog > 0.0) {
+        const [skyR, skyG, skyB] = getSkyColor(dx, 0.015, dz, sunX, sunY, sunZ);
+        colR = colR * (1.0 - fog) + skyR * fog;
+        colG = colG * (1.0 - fog) + skyG * fog;
+        colB = colB * (1.0 - fog) + skyB * fog;
+      }
+
+      return packRGB(colR, colG, colB);
+    }
+
+    function loadOceanVert(dst, idx) {
+      dst.cx = ovCX[idx]; dst.cy = ovCY[idx]; dst.cz = ovCZ[idx];
+      dst.wx = ovWX[idx]; dst.wy = ovWY[idx]; dst.wz = ovWZ[idx];
+      dst.ox = ovOrigX[idx]; dst.oz = ovOrigZ[idx];
+      dst.depth = ovDepth[idx]; dst.foam = ovFoam[idx];
+      dst.nx = 0; dst.ny = 1; dst.nz = 0;
+      dst.r = 0; dst.g = 0; dst.b = 0;
+    }
+
+    for (let r = 0; r < RINGS - 1; r++) {
+      const r0 = r * SECTORS;
+      const r1 = (r + 1) * SECTORS;
+      for (let s = 0; s < SECTORS; s++) {
+        const sNext = (s + 1) % SECTORS;
+        const i00 = r0 + s;
+        const i10 = r0 + sNext;
+        const i01 = r1 + s;
+        const i11 = r1 + sNext;
+
+        if (ovCZ[i00] < NEAR_Z && ovCZ[i10] < NEAR_Z && ovCZ[i01] < NEAR_Z && ovCZ[i11] < NEAR_Z) continue;
+
+        loadOceanVert(tv0, i00);
+        loadOceanVert(tv1, i10);
+        loadOceanVert(tv2, i01);
+        drawnTriangles += submitTriangle(tv0, tv1, tv2, oceanPixelShader, wireframe);
+
+        loadOceanVert(tv0, i10);
+        loadOceanVert(tv1, i11);
+        loadOceanVert(tv2, i01);
+        drawnTriangles += submitTriangle(tv0, tv1, tv2, oceanPixelShader, wireframe);
+      }
+    }
+
+    ctx.putImageData(imgData, 0, 0);
+
+    const cpuMs = performance.now() - tStart;
+    frameCounter++;
+    fpsTimer += dt;
+    if (fpsTimer >= 0.4) {
+      currentFPS = Math.round(frameCounter / fpsTimer);
+      frameCounter = 0;
+      fpsTimer = 0;
+      hud.textContent = `256x212 | FPS: ${currentFPS} | CPU: ${cpuMs.toFixed(1)} ms | Tris: ${drawnTriangles}`;
+    }
+
+    requestAnimationFrame(renderFrame);
+  }
+
+  requestAnimationFrame(renderFrame);
+})();
+</script>
+</body>
+</html>
